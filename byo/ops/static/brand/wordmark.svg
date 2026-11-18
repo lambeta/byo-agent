@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-357.9 -124.5 2617.9 1706">
+  <!-- byo wordmark — self-contained sticker; regenerable via brand/build_logo.py. -->
+  <!-- letters: Zilla Slab Bold outlines (SIL OFL 1.1), composed on one baseline; -->
+  <!-- the sticker plate tilts -2.0deg, the letters stay upright. -->
+  <g transform="rotate(-2.0 862 645.5)">
+  <!-- hard offset shadow: theme token byo-shadow-rest, zero blur -->
+  <rect x="-77.9" y="172.1" width="2224" height="1291" rx="129.1" fill="#1a1a1a"/>
+  <!-- the sticker plate -->
+  <rect x="-250" y="0" width="2224" height="1291" rx="129.1" fill="#ffd02f" stroke="#1a1a1a" stroke-width="86.1"/>
+</g>
+  <g fill="#1a1a1a">
+  <path transform="translate(0 868) scale(1 -1)" d="M530 236Q530 136 477.5 63Q425 -10 323 -10Q220 -10 178 68Q176 51 173.5 34Q171 17 168 0H39Q46 35 51 70Q56 105 56 139V590H-4V688H185V365Q203 404 239.5 432Q276 460 337 460Q422 460 476 401Q530 342 530 236ZM396 225Q396 290 368 324Q340 358 294 358Q242 358 213.5 320Q185 282 185 232V221Q185 166 212.5 128.5Q240 91 291 91Q335 91 365.5 123.5Q396 156 396 225Z"/> <!-- b -->
+  <path transform="translate(611 868) scale(1 -1)" d="M523 354H479L334 0L291 -113H350V-213H101V-113H173L209 -7L51 354H5V451H235V354H190L282 146H288L356 354H317V451H523Z"/> <!-- y -->
+  <path transform="translate(1201 868) scale(1 -1)" d="M503 225Q503 118 433 54Q363 -10 255 -10Q151 -10 85.5 50.5Q20 111 20 220Q20 319 80 390Q140 461 262 461Q384 461 443.5 390.5Q503 320 503 225ZM370 229Q370 298 338 330Q306 362 260 362Q210 362 181.5 326.5Q153 291 153 227Q153 169 179.5 129Q206 89 259 89Q309 89 339.5 126.5Q370 164 370 229Z"/> <!-- o -->
+</g>
+</svg>

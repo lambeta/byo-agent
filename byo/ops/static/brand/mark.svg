@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="97 93.8 899.1 899.1">
+  <!-- byo compact mark: the wordmark's sticker squared, carrying its initial. -->
+  <!-- "b" in Zilla Slab Bold (SIL OFL 1.1), outlined; legible at 16px. -->
+  <g transform="rotate(-2.0 500 500)">
+    <rect x="210" y="210" width="760" height="760" rx="90" fill="#1a1a1a"/>
+    <rect x="120" y="120" width="760" height="760" rx="90" fill="#ffd02f" stroke="#1a1a1a" stroke-width="60"/>
+  </g>
+  <path transform="translate(355.3 313.5) scale(0.6 -0.6)" fill="#1a1a1a" d="M530 236Q530 136 477.5 63Q425 -10 323 -10Q220 -10 178 68Q176 51 173.5 34Q171 17 168 0H39Q46 35 51 70Q56 105 56 139V590H-4V688H185V365Q203 404 239.5 432Q276 460 337 460Q422 460 476 401Q530 342 530 236ZM396 225Q396 290 368 324Q340 358 294 358Q242 358 213.5 320Q185 282 185 232V221Q185 166 212.5 128.5Q240 91 291 91Q335 91 365.5 123.5Q396 156 396 225Z"/>
+</svg>
