@@ -30,7 +30,7 @@ function settingsView(data) {
     '<input id="model" type="text" value="' + esc(settings.model) + '">' +
     '<label for="api_key">API key ' + (settings.has_key ? '(a key is set)' : '(none set)') + '</label>' +
     '<input id="api_key" type="password" placeholder="paste to replace, never shown again">' +
-    '<p><button onclick="saveSettings()">Save</button></p>' +
+    '<p><button class="primary" onclick="saveSettings()">Save</button></p>' +
     '</section>';
 }
 

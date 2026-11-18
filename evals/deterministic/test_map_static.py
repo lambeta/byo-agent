@@ -70,6 +70,26 @@ def test_live_player_is_read_only_and_cursor_driven():
     assert "method: 'POST'" not in live
     assert "fetch('/api/events" in live
 
+def test_shell_loads_all_seven_scripts_in_order():
+    shell = read("index.html")
+    order = ["api.js", "render.js", "map.js", "live.js", "observe.js", "dock.js", "main.js"]
+    positions = []
+    for script in order:
+        marker = "/static/js/" + script
+        assert marker in shell, script
+        positions.append(shell.index(marker))
+    assert positions == sorted(positions), order
+
+
+def test_static_server_serves_every_script():
+    from byo.ops.dashboard import STATIC
+
+    for script in ("api.js", "render.js", "map.js", "live.js", "observe.js", "dock.js", "main.js"):
+        assert (STATIC / "js" / script).is_file(), script
+    assert (STATIC / "style.css").is_file()
+    assert (STATIC / "index.html").is_file()
+
+
 def test_no_reference_brand_assets_are_copied():
     for name in ("index.html", "style.css", "js/map.js", "js/live.js"):
         text = read(name)

@@ -229,6 +229,7 @@ function overviewView(data) {
     '<div class="map-toolbar"><div id="map-status" class="map-status" role="status" aria-live="polite">Agent idle</div>' +
     '<div class="map-windows">' + buttons + '</div></div>' +
     '<div id="live-indicator" class="live-indicator" hidden>' +
+    '<span class="live-sticker">LIVE</span>' +
     '<button type="button" class="linkish" onclick="mapReturnToLive()">A new turn is running — return to the map</button></div>' +
     '<div class="map-wrap">' + mapSvg(data) + '</div>' +
     '<details class="map-text"><summary>Text view of the map</summary><ul class="map-text-list">' +
