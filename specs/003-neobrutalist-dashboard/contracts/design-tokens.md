@@ -83,8 +83,9 @@ If a pair fails in a scheme, the accent's value in that scheme is re-tuned — n
 3. No token or rule references an external resource: no `@import`, no `http(s)://`, no
    remote `url()`.
 4. `--byo-text-1` and `--byo-text-2` never go below 14 px and 12.5 px (spec FR-004).
-5. The dark block remains the `:root` default; the light block remains a media query, so a
-   browser with no preference support renders the dark scheme (status quo).
+5. The light block is the `:root` default; the dark block is the `:root[data-theme="dark"]
+   override selected by the in-shell theme switch (light default, persisted choice). Revised
+   2026-11-19: previously dark was the default and light followed the OS media query.
 
 ## Change procedure
 

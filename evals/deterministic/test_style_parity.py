@@ -12,6 +12,7 @@ PINNED = [
     # navigation and shell
     "Overview", "Chat", "Observability", "Memory", "Settings", "byo",
     "Ask for something, or say what to remember", "Send",
+    "theme-toggle", "theme: ",
     # overview
     "Today", "7 days", "All", "Agent idle",
     "A new turn is running", "return to the map",

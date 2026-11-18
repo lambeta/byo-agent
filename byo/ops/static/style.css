@@ -1,27 +1,28 @@
 /* byo dashboard — Neobrutalist skin.
    Mechanism: one token-driven stylesheet. Every colour, contour, shadow, radius and type
-   geometry is a --byo-* custom property defined once for dark (default :root) and re-valued
-   for light under prefers-color-scheme; component rules consume tokens only. Depth is a hard
+   geometry is a --byo-* custom property defined once for light (the default :root) and re-valued
+   for dark under [data-theme="dark"]; component rules consume tokens only. Depth is a hard
    offset shadow (zero blur); controls press onto their shadow. State is word + contour +
    shadow + dash, hue is the fourth cue.
    Rejected alternatives: a utility framework or component library (new dependency, build step,
-   config owning the design); two per-scheme stylesheets (drift); a runtime theme switch
-   (spec FR-011 follows the OS only). */
+   config owning the design); two per-scheme stylesheets (drift); OS-only following (the
+   user asked for an explicit light/dark choice, light by default). */
 
 :root {
-  /* field + ink */
-  --byo-field: #101014;
-  --byo-panel: #1a1a22;
-  --byo-panel-raised: #22222c;
-  --byo-ink: #f2ede0;
-  --byo-ink-soft: #b8b2a3;
+  color-scheme: light;
+  /* field + ink (light is the default scheme) */
+  --byo-field: #fdf6e9;
+  --byo-panel: #ffffff;
+  --byo-panel-raised: #fffdf5;
+  --byo-ink: #1a1a1a;
+  --byo-ink-soft: #4a4a4a;
   --byo-ink-on-accent: #1a1a1a;
   /* accents */
   --byo-accent-brand: #ffd02f;
-  --byo-accent-live: #6aa6ff;
-  --byo-accent-ok: #57d19b;
-  --byo-accent-bad: #ff7a7a;
-  --byo-accent-warn: #f2c14e;
+  --byo-accent-live: #4a7dff;
+  --byo-accent-ok: #1e9e62;
+  --byo-accent-bad: #ef5350;
+  --byo-accent-warn: #c77f0a;
   /* contour + shadow */
   --byo-contour-w: 2px;
   --byo-contour-w-strong: 3.5px;
@@ -46,20 +47,19 @@
   --byo-space-3: 16px;
   --byo-space-4: 24px;
 }
-@media (prefers-color-scheme: light) {
-  :root {
-    --byo-field: #fdf6e9;
-    --byo-panel: #ffffff;
-    --byo-panel-raised: #fffdf5;
-    --byo-ink: #1a1a1a;
-    --byo-ink-soft: #4a4a4a;
-    --byo-ink-on-accent: #1a1a1a;
-    --byo-accent-brand: #ffd02f;
-    --byo-accent-live: #4a7dff;
-    --byo-accent-ok: #1e9e62;
-    --byo-accent-bad: #ef5350;
-    --byo-accent-warn: #c77f0a;
-  }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --byo-field: #101014;
+  --byo-panel: #1a1a22;
+  --byo-panel-raised: #22222c;
+  --byo-ink: #f2ede0;
+  --byo-ink-soft: #b8b2a3;
+  --byo-ink-on-accent: #1a1a1a;
+  --byo-accent-brand: #ffd02f;
+  --byo-accent-live: #6aa6ff;
+  --byo-accent-ok: #57d19b;
+  --byo-accent-bad: #ff7a7a;
+  --byo-accent-warn: #f2c14e;
 }
 
 * { box-sizing: border-box; }
@@ -398,6 +398,19 @@ label {
 .detail-reply { border-top: var(--byo-contour-w) dashed var(--byo-ink); margin-top: 8px; }
 .raw { margin-top: var(--byo-space-3); color: var(--byo-ink-soft); }
 .raw summary { cursor: pointer; font-size: var(--byo-text-3); font-weight: 700; text-transform: uppercase; letter-spacing: var(--byo-track-wide); }
+
+
+/* --- Theme toggle ---------------------------------------------------------- */
+.theme-toggle {
+  align-self: flex-start;
+  font: 700 var(--byo-text-3) var(--byo-font-mono);
+  text-transform: uppercase; letter-spacing: var(--byo-track-wide);
+  padding: 6px var(--byo-space-2);
+}
+.theme-toggle::before { content: "◐ "; }
+@media (max-width: 900px) {
+  .theme-toggle { align-self: center; }
+}
 
 /* --- Responsive ---------------------------------------------------------------- */
 @media (max-width: 900px) {

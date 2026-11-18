@@ -10,9 +10,9 @@ constraints, and how to verify it without a browser test runner.
 ## R1 — Styling mechanism: one token-driven stylesheet
 
 - **Decision**: Keep a single `style.css`. Define the whole visual language as CSS custom
-  properties on `:root` (the *tokens*), re-value them inside the existing
-  `@media (prefers-color-scheme: light)` block for the light scheme, and write component rules
-  that consume only tokens. Add the two missing guards — `prefers-reduced-motion` (exists) and
+  properties on `:root` (the *tokens*), and write component rules that consume only tokens.
+  (Revised 2026-11-19: light is the default `:root`; dark is a `[data-theme="dark"]` override
+  chosen by an in-shell switch, replacing the OS media query.) Add the two missing guards — `prefers-reduced-motion` (exists) and
   `forced-colors` (new).
 - **Rationale**: One file, one token seam, two schemes from the same definitions — there is no
   second source to drift, and a reviewer reads the entire identity in one place. Custom

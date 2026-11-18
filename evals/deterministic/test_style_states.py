@@ -49,8 +49,8 @@ def test_focus_visible_covers_links_buttons_inputs_and_map_nodes():
         assert re.search(pattern, CSS), selector
 
 
-def test_media_guards_present_and_no_ambient_animation():
-    assert "prefers-color-scheme: light" in CSS
+def test_media_guards_present_and_no_ambient_animation():  # dark override + motion/HC guards
+    assert ":root[data-theme=\"dark\"]" in CSS  # dark scheme override
     assert "prefers-reduced-motion" in CSS
     assert "forced-colors" in CSS
     assert "@keyframes" not in CSS

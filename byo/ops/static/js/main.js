@@ -142,6 +142,24 @@ async function send(message) {
   return finished;
 }
 
+// Theme toggle: light is the default; the choice persists across visits.
+(function () {
+  const button = document.getElementById('theme-toggle');
+  if (!button) return;
+  function paint() {
+    const mode = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    button.textContent = 'theme: ' + mode;
+    button.setAttribute('aria-pressed', mode === 'dark' ? 'true' : 'false');
+  }
+  button.addEventListener('click', function () {
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('byo-theme', next); } catch (error) { /* private mode */ }
+    paint();
+  });
+  paint();
+})();
+
 document.getElementById('chat-form').addEventListener('submit', async function (event) {
   event.preventDefault();
   const input = document.getElementById('chat-input');

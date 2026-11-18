@@ -42,13 +42,11 @@ CONTRAST_PAIRS = [
 
 
 def _blocks() -> tuple[str, str]:
-    light = re.search(
-        r"@media\s*\(prefers-color-scheme:\s*light\)\s*\{\s*:root\s*\{(.*?)\}",
-        CSS, re.S,
-    )
-    assert light, "light scheme :root block missing"
-    dark = re.search(r"^:root\s*\{(.*?)\}", CSS, re.S | re.M)
-    assert dark, "dark scheme :root block missing"
+    # Light is the default :root; dark is an explicit override via [data-theme].
+    light = re.search(r"^:root\s*\{(.*?)\}", CSS, re.S | re.M)
+    assert light, "light (default) :root block missing"
+    dark = re.search(r'^:root\[data-theme="dark"\]\s*\{(.*?)\}', CSS, re.S | re.M)
+    assert dark, "dark [data-theme] override block missing"
     return dark.group(1), light.group(1)
 
 
@@ -72,10 +70,11 @@ def _ratio(a: str, b: str) -> float:
 
 def test_every_token_is_defined_and_colours_revalued_per_scheme():
     dark, light = _blocks()
+    # Structural tokens live once in the default (light) root; colours are re-valued.
     for token in STRUCTURAL_TOKENS + COLOUR_TOKENS:
-        assert token in dark, ("dark", token)
-    for token in COLOUR_TOKENS:
         assert token in light, ("light", token)
+    for token in COLOUR_TOKENS:
+        assert token in dark, ("dark", token)
 
 
 def test_contrast_pairs_meet_aa_in_both_schemes():
@@ -88,15 +87,14 @@ def test_contrast_pairs_meet_aa_in_both_schemes():
 
 
 def test_type_floor_matches_prechange_sizes():
-    dark, _ = _blocks()
-    values = _scheme_values(dark)
+    _, light = _blocks()
+    values = _scheme_values(light)
     assert values["--byo-text-1"].strip() == "14px"
     assert values["--byo-text-2"].strip() == "12.5px"
     assert values["--byo-text-3"].strip() == "11px"
 
 def _without_token_blocks() -> str:
-    stripped = re.sub(r":root\s*\{[^}]*\}", "", CSS)
-    return stripped
+    return re.sub(r':root(?:\[data-theme="dark"\])?\s*\{[^}]*\}', "", CSS)
 
 
 def test_no_raw_hex_outside_token_blocks():

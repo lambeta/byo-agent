@@ -31,3 +31,9 @@ escalation was not approved), so these quickstart.md scenarios remain for a huma
 - Scenario 9: label-by-label parity walkthrough
 
 Run: `uv run byo dashboard` → http://127.0.0.1:7777 and follow quickstart.md.
+## Addendum 2026-11-19: dual scheme, light default
+
+At the user's direction the scheme mechanism changed: light is now the default `:root`
+token set, dark is a `:root[data-theme="dark"]` override chosen by a sidebar theme switch
+(persisted in localStorage, no OS dependency). Tests updated accordingly; suite re-run green.
+Manual re-check of quickstart scenarios 3 (both schemes) now uses the switch instead of the OS.

@@ -4,6 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>byo — local agent</title>
+  <script>
+    // Theme: light by default; a saved choice wins. Runs before CSS to avoid a flash.
+    (function () {
+      var saved = null;
+      try { saved = localStorage.getItem('byo-theme'); } catch (error) { saved = null; }
+      document.documentElement.setAttribute('data-theme', saved === 'dark' ? 'dark' : 'light');
+    })();
+  </script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -16,6 +24,7 @@
       <a href="#memory" data-view="memory">Memory</a>
       <a href="#settings" data-view="settings">Settings</a>
     </nav>
+    <button type="button" id="theme-toggle" class="theme-toggle">theme: light</button>
     <div class="home" id="home-path"></div>
   </aside>
   <main id="view"></main>
