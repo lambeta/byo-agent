@@ -28,12 +28,17 @@
     <div class="home" id="home-path"></div>
   </aside>
   <main id="view"></main>
-  <section class="dock">
+  <aside class="chat-rail" id="chat-rail" aria-label="Chat">
+    <div class="chat-head">Chat</div>
+    <div class="chat-scroll">
+      <div id="chat-live"></div>
+      <div id="chat-history"></div>
+    </div>
     <form id="chat-form" autocomplete="off">
       <input id="chat-input" placeholder="Ask for something, or say what to remember" autocomplete="off">
       <button type="submit" class="primary">Send</button>
     </form>
-  </section>
+  </aside>
   <script src="/static/js/api.js"></script>
   <script src="/static/js/render.js"></script>
   <script src="/static/js/map.js"></script>

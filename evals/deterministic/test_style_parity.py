@@ -17,10 +17,10 @@ PINNED = [
     "Today", "7 days", "All", "Agent idle",
     "A new turn is running", "return to the map",
     "Text view of the map", "Recent turns",
-    "No turns recorded yet. Say something in the dock to start.",
+    "No turns recorded yet. Say something in the composer to start.",
     # chat cards
     "gate · ", "loop(s)", "tool(s)", "you ›", "byo ›",
-    "call(s)", "in / ", "USD ", "Say something below to start.",
+    "call(s)", "in / ", "USD ", "Say something in the composer to start.",
     # turn detail
     "Turn ", "Close", "slowest", "most $", "bad line(s) skipped",
     "loop ", "reply", "memory", "receipt", "recorded detail",

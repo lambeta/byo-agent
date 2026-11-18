@@ -205,7 +205,7 @@ function mapPlural(value, word) {
 
 function mapRecent(data) {
   if (!data.turns.length) {
-    return '<p class="empty">No turns recorded yet. Say something in the dock to start.</p>';
+    return '<p class="empty">No turns recorded yet. Say something in the composer to start.</p>';
   }
   return data.turns.map(function (turn) {
     const cost = turn.usd == null ? 'cost not recorded' : mapMoney(turn.usd, turn.estimate);
@@ -232,9 +232,9 @@ function overviewView(data) {
     '<span class="live-sticker">LIVE</span>' +
     '<button type="button" class="linkish" onclick="mapReturnToLive()">A new turn is running — return to the map</button></div>' +
     '<div class="map-wrap">' + mapSvg(data) + '</div>' +
-    '<details class="map-text"><summary>Text view of the map</summary><ul class="map-text-list">' +
+    '<details class="map-text bento-2"><summary>Text view of the map</summary><ul class="map-text-list">' +
     mapTextList(data) + '</ul></details>' +
-    '<section class="recent"><div class="section-head"><h2>Recent turns</h2>' +
+    '<section class="recent bento-4"><div class="section-head"><h2>Recent turns</h2>' +
     '<span class="meta">' + esc(window === 'today' ? 'today' : window === 'all' ? 'all recorded' : '7 days') +
     '</span></div><div class="recent-list">' + mapRecent(data) + '</div></section>' +
     '<aside id="turn-detail" class="turn-detail" hidden aria-labelledby="detail-title"></aside>';

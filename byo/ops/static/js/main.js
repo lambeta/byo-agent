@@ -1,4 +1,4 @@
-const state = { data: null, view: 'overview', live: null, map: null, mapError: false, window: '7d' };
+const state = { data: null, view: 'overview', live: null, map: null, mapError: false, window: '7d', mainView: 'overview' };
 
 function viewName() {
   return (location.hash || '#overview').slice(1) || 'overview';
@@ -12,23 +12,35 @@ function render() {
   for (const link of document.querySelectorAll('#nav a')) {
     link.classList.toggle('active', link.dataset.view === viewName());
   }
-  if (state.live && viewName() === 'chat') {
-    view.innerHTML = '<h1>Chat</h1>' + state.live.html;
-    return;
+  // Chat lives in the right rail; the nav entry focuses the composer.
+  let name = viewName();
+  if (name === 'chat') {
+    const input = document.getElementById('chat-input');
+    if (input) input.focus();
+    name = state.mainView;
+  } else {
+    state.mainView = name;
   }
-  if (viewName() === 'overview') {
+  if (name === 'overview') {
     renderOverview();
+    renderChat();
     return;
   }
   if (typeof MapLive !== 'undefined') MapLive.stop();
-  if (viewName() === 'observe') view.innerHTML = observeView(data);
-  else if (viewName() === 'memory') view.innerHTML = memoryView(data);
-  else if (viewName() === 'settings') view.innerHTML = settingsView(data);
-  else {
-    const turns = (data.turns || []).slice().reverse();
-    view.innerHTML = '<h1>Chat</h1>' +
-      (turns.length ? turns.map(turnCard).join('') : '<p class="empty">Say something below to start.</p>');
-  }
+  if (name === 'observe') view.innerHTML = observeView(data);
+  else if (name === 'memory') view.innerHTML = memoryView(data);
+  else if (name === 'settings') view.innerHTML = settingsView(data);
+  else { state.mainView = 'overview'; renderOverview(); }
+  renderChat();
+}
+
+function renderChat() {
+  const history = document.getElementById('chat-history');
+  if (!history) return;
+  const turns = state.data ? (state.data.turns || []).slice().reverse() : [];
+  history.innerHTML = turns.length
+    ? turns.map(turnCard).join('')
+    : '<p class="empty">Say something in the composer to start.</p>';
 }
 
 function renderOverview() {
@@ -84,30 +96,15 @@ function newLive(message) {
 }
 
 function paintLive() {
-  const view = document.getElementById('view');
-  for (const link of document.querySelectorAll('#nav a')) link.classList.remove('active');
-  view.innerHTML = '<h1>Chat</h1><div id="live">' + turnCard(state.live) + '</div>';
-}
-
-async function sendFromOverview(message) {
-  mapSetStatus('sending…');
-  try {
-    await API.stream(message, function (kind, payload) {
-      if (kind === 'error') {
-        const text = (payload.error && payload.error.message) || payload.message || 'failed';
-        mapSetStatus('failed: ' + text, 'bad');
-      }
-    });
-  } catch (error) {
-    mapSetStatus('failed', 'bad');
-  }
-  await refresh();
+  const live = document.getElementById('chat-live');
+  if (live) live.innerHTML = state.live ? turnCard(state.live) : '';
 }
 
 async function send(message) {
-  if (viewName() === 'overview') return sendFromOverview(message);
   state.live = newLive(message);
   paintLive();
+  const onMap = typeof mapSetStatus === 'function' && document.getElementById('map-status');
+  if (onMap) mapSetStatus('sending…');
   await API.stream(message, function (kind, payload) {
     if (!state.live) return;
     if (kind === 'text') {
@@ -127,6 +124,7 @@ async function send(message) {
       const message = (payload.error && payload.error.message) || payload.message || 'failed';
       state.live.steps.push({ kind: 'error', message: message, ok: false });
       state.live.state = 'failed';
+      if (onMap) mapSetStatus('failed: ' + message, 'bad');
     } else if (kind === 'receipt') {
       state.live.receipt = payload;
     } else if (kind === 'done') {
@@ -138,6 +136,7 @@ async function send(message) {
   });
   const finished = state.live;
   state.live = null;
+  paintLive();
   await refresh();
   return finished;
 }
@@ -166,15 +165,12 @@ document.getElementById('chat-form').addEventListener('submit', async function (
   const message = input.value.trim();
   if (!message) return;
   input.value = '';
-  if (viewName() === 'overview') {
-    await sendFromOverview(message);
-  } else {
-    await send(message);
-  }
+  await send(message);
 });
 
 window.addEventListener('hashchange', function () {
   state.live = null;
+  paintLive();
   if (typeof MapLive !== 'undefined') MapLive.stop();
   if (viewName() === 'overview' && state.data && !state.map) {
     refreshMap(state.window).catch(function () { render(); });

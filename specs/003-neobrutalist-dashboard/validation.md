@@ -37,3 +37,11 @@ At the user's direction the scheme mechanism changed: light is now the default `
 token set, dark is a `:root[data-theme="dark"]` override chosen by a sidebar theme switch
 (persisted in localStorage, no OS dependency). Tests updated accordingly; suite re-run green.
 Manual re-check of quickstart scenarios 3 (both schemes) now uses the switch instead of the OS.
+## Addendum 2026-11-19: bento grid + right chat rail
+
+Layout change at the user's direction: the bottom dock is gone; chat is a persistent right rail
+(360 px, history + live card + composer) and the main view is a 6-column bento grid with
+`.bento-4`/`.bento-2` spans (Observability, Memory, Settings, Overview recent/text cells).
+The `#chat` nav entry now focuses the composer instead of switching views. Copy touchpoints
+updated ("Say something in the composer to start."). Suite 157 green, ruff clean; served markup
+verified on a scratch port (7799) because 7777 was occupied by another app at test time.

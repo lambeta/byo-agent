@@ -30,7 +30,7 @@ function observeView(data) {
     ? turns.map(turnTrack).join('')
     : '<p class="empty">No turns recorded yet.</p>';
   return '<h1>Observability</h1>' + stats +
-    '<section class="card"><h1>Turns</h1>' + list + '</section>' +
-    '<section class="card"><h1>Spend by model</h1><table><tr><th>model</th><th>USD</th></tr>' +
+    '<section class="card bento-4"><h1>Turns</h1>' + list + '</section>' +
+    '<section class="card bento-2"><h1>Spend by model</h1><table><tr><th>model</th><th>USD</th></tr>' +
     (byModel || '<tr><td colspan="2" class="empty">nothing spent yet</td></tr>') + '</table></section>';
 }
