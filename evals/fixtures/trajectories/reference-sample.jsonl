@@ -1,0 +1,7 @@
+{"type":"turn_start","turn_id":"t_reference00001","user_message":"what shipped this week?","source":"dashboard","ts":"2026-11-17T09:00:00.000+08:00"}
+{"type":"hook","turn_id":"t_reference00001","event":"UserPromptSubmit","plugin":"waku-memory","ok":true,"duration_ms":41,"ts":"2026-11-17T09:00:00.041+08:00"}
+{"type":"route","turn_id":"t_reference00001","route":"research","reason":"asked for a digest","ts":"2026-11-17T09:00:00.060+08:00"}
+{"type":"llm","turn_id":"t_reference00001","iteration":1,"kind":"loop","model":"claude-sonnet-4-5","stop_reason":"end_turn","usage":{"in":400,"out":60},"duration_ms":700,"ts":"2026-11-17T09:00:00.760+08:00"}
+{"type":"report","turn_id":"t_reference00001","title":"Weekly digest","memory_id":"mem_1","ts":"2026-11-17T09:00:00.800+08:00"}
+{"type":"score","turn_id":"t_reference00001","source":"judge","name":"grounded","value":0.8,"ts":"2026-11-17T09:00:01.000+08:00"}
+{"type":"turn_end","turn_id":"t_reference00001","reply":"Three things shipped.","iterations":1,"ts":"2026-11-17T09:00:01.100+08:00"}

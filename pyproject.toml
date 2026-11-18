@@ -1,0 +1,42 @@
+[project]
+name = "byo-agent"
+dynamic = ["version"]
+description = "A minimal, transparent, local-first agent: harness + loop + memory + operations."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.40",
+    "openai>=1.50",
+    "python-dotenv>=1.0",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+byo = "byo.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "byo/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["byo"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = ["B008"]
+
+[tool.pytest.ini_options]
+testpaths = ["evals"]
+pythonpath = [".", "evals"]
+addopts = "-q"

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>byo — local agent</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">byo</div>
+    <nav id="nav">
+      <a href="#overview" data-view="overview">Overview</a>
+      <a href="#chat" data-view="chat">Chat</a>
+      <a href="#observe" data-view="observe">Observability</a>
+      <a href="#memory" data-view="memory">Memory</a>
+      <a href="#settings" data-view="settings">Settings</a>
+    </nav>
+    <div class="home" id="home-path"></div>
+  </aside>
+  <main id="view"></main>
+  <section class="dock">
+    <form id="chat-form" autocomplete="off">
+      <input id="chat-input" placeholder="Ask for something, or say what to remember" autocomplete="off">
+      <button type="submit">Send</button>
+    </form>
+  </section>
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/render.js"></script>
+  <script src="/static/js/map.js"></script>
+  <script src="/static/js/live.js"></script>
+  <script src="/static/js/observe.js"></script>
+  <script src="/static/js/dock.js"></script>
+  <script src="/static/js/main.js"></script>
+</body>
+</html>

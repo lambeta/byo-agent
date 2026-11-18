@@ -1,0 +1,28 @@
+{
+  "responses": [
+    {
+      "tool_calls": [
+        {
+          "id": "call_1",
+          "name": "echo",
+          "args": {
+            "value": "x"
+          }
+        }
+      ],
+      "stop_reason": "tool_use",
+      "usage": {
+        "in": 10,
+        "out": 5
+      }
+    },
+    {
+      "text": "done",
+      "stop_reason": "end_turn",
+      "usage": {
+        "in": 12,
+        "out": 3
+      }
+    }
+  ]
+}
