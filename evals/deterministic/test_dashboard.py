@@ -111,3 +111,38 @@ def test_card_trajectory_and_waterfall_agree(server, settings):
     assert records[0]["type"] == "turn_start"
     assert records[-1]["type"] == "turn_end"
     assert [r["type"] for r in records].count("receipt") == 1
+
+def test_sessions_split_and_history_is_per_session(server):
+    call(server, "/api/chat/stream", {"message": "first chat message"})
+    state = json.loads(call(server, "/api/session"))
+    assert state["current"] == "default"
+    assert [row["session_id"] for row in state["sessions"]] == ["default"]
+
+    created = json.loads(call(server, "/api/session", {"action": "new"}))
+    assert created["ok"] is True
+    assert created["session_id"] != "default"
+
+    state = json.loads(call(server, "/api/session"))
+    assert state["current"] == created["session_id"]
+
+    call(server, "/api/chat/stream", {"message": "second chat message"})
+    old = json.loads(call(server, "/api/session?action=history&session_id=default"))
+    new = json.loads(
+        call(server, "/api/session?action=history&session_id=" + created["session_id"])
+    )
+    assert [row["content"] for row in old["messages"] if row["role"] == "user"] == [
+        "first chat message"
+    ]
+    assert [row["content"] for row in new["messages"] if row["role"] == "user"] == [
+        "second chat message"
+    ]
+
+
+def test_unknown_session_action_is_a_400(server):
+    import urllib.error
+
+    try:
+        call(server, "/api/session", {"action": "bogus"})
+        raise AssertionError("expected a 400")
+    except urllib.error.HTTPError as exc:
+        assert exc.code == 400

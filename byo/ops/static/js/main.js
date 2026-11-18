@@ -1,4 +1,5 @@
-const state = { data: null, view: 'overview', live: null, map: null, mapError: false, window: '7d' };
+const state = { data: null, view: 'overview', live: null, map: null, mapError: false, window: '7d',
+  session: 'default', viewing: null, chatGen: 0 };
 
 const VIEW_HEADS = {
   overview: ['Overview', 'The runtime map, live.'],
@@ -40,13 +41,53 @@ function render() {
   renderChat();
 }
 
+function bubble(message) {
+  const me = message.role === 'user';
+  return '<div class="bubble' + (me ? ' me' : '') + '">' +
+    '<div class="bubble-meta">' + (me ? 'you' : 'byo') + ' · ' + esc(stamp(message.created_at)) + '</div>' +
+    '<div class="bubble-body">' + esc(message.content) + '</div></div>';
+}
+
 function renderChat() {
   const history = document.getElementById('chat-history');
   if (!history) return;
-  const turns = state.data ? (state.data.turns || []).slice().reverse() : [];
-  history.innerHTML = turns.length
-    ? turns.map(turnCard).join('')
-    : '<p class="empty">Say something in the composer to start.</p>';
+  const wanted = state.viewing || state.session;
+  const generation = ++state.chatGen;
+  API.get('/api/session?action=history&session_id=' + encodeURIComponent(wanted))
+    .then(function (payload) {
+      if (state.chatGen !== generation) return;  // a newer load won
+      const messages = payload.messages || [];
+      const past = state.viewing && state.viewing !== state.session;
+      history.innerHTML =
+        (past ? '<p class="empty">Reading a past session — sending returns to the current chat.</p>' : '') +
+        (messages.length
+          ? messages.map(bubble).join('')
+          : '<p class="empty">Say something in the composer to start.</p>');
+      scrollChat();
+    })
+    .catch(function () {
+      if (state.chatGen !== generation) return;
+      history.innerHTML = '<p class="empty">History unavailable.</p>';
+    });
+}
+
+function scrollChat() {
+  const log = document.getElementById('docklog');
+  if (log) log.scrollTop = log.scrollHeight;
+}
+
+function renderSessionPicker(sessions) {
+  const select = document.getElementById('chat-sessions');
+  if (!select) return;
+  const list = [{ session_id: state.session, messages: 0, last: '' }].concat(
+    (sessions || []).filter(function (row) { return row.session_id !== state.session; })
+  );
+  select.innerHTML = list.map(function (row) {
+    const label = row.session_id + (row.messages ? ' · ' + row.messages : '');
+    const current = (state.viewing || state.session) === row.session_id;
+    return '<option value="' + esc(row.session_id) + '"' + (current ? ' selected' : '') + '>' +
+      esc(label) + '</option>';
+  }).join('');
 }
 
 function renderOverview() {
@@ -62,7 +103,10 @@ function renderOverview() {
   }
   view.innerHTML = overviewView(state.map);
   mapBind(state.map);
-  if (typeof MapLive !== 'undefined') MapLive.start(state.map);
+  if (typeof MapLive !== 'undefined') {
+    // A refresh re-renders the SVG; keep the running poller so the settle is not cut short.
+    if (MapLive.started) MapLive.tick(); else MapLive.start();
+  }
   if (MAP_STATE.selected) {
     const stillThere = state.map.turns.some(function (turn) { return turn.turn_id === MAP_STATE.selected; });
     if (stillThere) mapOpenTurn(MAP_STATE.selected);
@@ -75,6 +119,11 @@ function renderOverview() {
 
 async function refresh() {
   state.data = await API.get('/api/data');
+  try {
+    const session = await API.get('/api/session');
+    state.session = session.current || state.session;
+    renderSessionPicker(session.sessions);
+  } catch (error) { /* older server: keep the default session */ }
   if (viewName() === 'overview') {
     try {
       state.map = await API.get('/api/map?window=' + encodeURIComponent(state.window));
@@ -107,8 +156,14 @@ function paintLive() {
 }
 
 async function send(message) {
+  if (state.viewing && state.viewing !== state.session) {
+    state.viewing = null;
+    renderSessionPicker(state.data && state.data.sessions);
+    renderChat();
+  }
   state.live = newLive(message);
   paintLive();
+  scrollChat();
   const onMap = typeof mapSetStatus === 'function' && document.getElementById('map-status');
   if (onMap) mapSetStatus('sending…');
   await API.stream(message, function (kind, payload) {
@@ -139,6 +194,7 @@ async function send(message) {
       state.live.turn_id = payload.turn_id;
     }
     paintLive();
+    scrollChat();
   });
   const finished = state.live;
   state.live = null;
@@ -197,10 +253,25 @@ async function send(message) {
   }
   input.addEventListener('input', autogrow);
   input.addEventListener('keydown', function (event) {
+    // Never submit mid-composition: CJK IMEs confirm candidates with Enter.
+    if (event.isComposing || event.keyCode === 229) return;
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       document.getElementById('chat-form').requestSubmit();
     }
+  });
+
+  document.getElementById('new-chat').addEventListener('click', async function () {
+    const result = await API.post('/api/session', { action: 'new' });
+    if (result && result.session_id) {
+      state.session = result.session_id;
+      state.viewing = null;
+      await refresh();
+    }
+  });
+  document.getElementById('chat-sessions').addEventListener('change', function (event) {
+    state.viewing = event.target.value;
+    renderChat();
   });
 })();
 

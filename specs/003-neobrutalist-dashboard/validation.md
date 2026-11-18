@@ -54,3 +54,26 @@ left rail with grouped sections + collapse-to-letters, main with a page head
 fixed "‹ Chat" reopen handle, composer is an autogrowing textarea (Enter sends, Shift+Enter
 newlines). Dock width persists in localStorage. The Neobrutalist token skin is unchanged.
 Suite 157 green, ruff clean; shell markers verified on scratch port 7799.
+## Addendum 2026-11-19: chat interaction and session history fixes
+
+Reported problem: "Chat 的交互和历史会话有些问题". Diagnosed defects and fixes:
+
+1. **History was a turn-card dump, not a conversation.** The dock rendered observability
+   turn cards (all sources, CLI included). Now the dock renders chat_log as user/assistant
+   bubbles for the active session via `GET /api/session?action=history`; the detailed live
+   card remains only while a turn streams.
+2. **Sessions existed in the schema but not in the UI.** Added `POST /api/session
+   {action:"new"}` (`Agent.new_session()` → `s-YYYYMMDD-HHMMSS`, resets working history,
+   past sessions stay in chat_log), a real `current` in `GET /api/session`, a "+ New chat"
+   button and a history picker; past sessions are read-only and sending returns to the
+   current chat.
+3. **Enter submitted mid-IME-composition** (CJK input). Guarded with
+   `event.isComposing || keyCode === 229`.
+4. **No scroll management.** The log follows new messages (scrollChat on send/stream/refresh);
+   a generation counter discards stale history loads.
+
+Tests: `test_dashboard.py` gains session split/history/400 coverage; parity pins gain the
+new controls. Scoped run: 26 passed. Note: a concurrent session (specs/004) was mid-edit on
+app.py/dashboard.py during this change; the repo-wide suite has 2 failures in THEIR scope
+(test_map.py, test_map_api.py), so this change is deliberately left uncommitted until their
+session settles.
