@@ -1,4 +1,17 @@
-const state = { data: null, view: 'overview', live: null, map: null, mapError: false, window: '7d', mainView: 'overview' };
+const state = { data: null, view: 'overview', live: null, map: null, mapError: false, window: '7d' };
+
+const VIEW_HEADS = {
+  overview: ['Overview', 'The runtime map, live.'],
+  memory: ['Memory', 'Facts and episodes the agent kept.'],
+  observe: ['Observability', 'Turns, timing and spend.'],
+  settings: ['Settings', 'Provider, model and key.'],
+};
+
+function setHead(name) {
+  const head = VIEW_HEADS[name] || VIEW_HEADS.overview;
+  document.getElementById('title').textContent = head[0];
+  document.getElementById('sub').textContent = head[1];
+}
 
 function viewName() {
   return (location.hash || '#overview').slice(1) || 'overview';
@@ -12,25 +25,18 @@ function render() {
   for (const link of document.querySelectorAll('#nav a')) {
     link.classList.toggle('active', link.dataset.view === viewName());
   }
-  // Chat lives in the right rail; the nav entry focuses the composer.
-  let name = viewName();
-  if (name === 'chat') {
-    const input = document.getElementById('chat-input');
-    if (input) input.focus();
-    name = state.mainView;
-  } else {
-    state.mainView = name;
-  }
+  const name = viewName();
   if (name === 'overview') {
+    setHead('overview');
     renderOverview();
     renderChat();
     return;
   }
   if (typeof MapLive !== 'undefined') MapLive.stop();
-  if (name === 'observe') view.innerHTML = observeView(data);
-  else if (name === 'memory') view.innerHTML = memoryView(data);
-  else if (name === 'settings') view.innerHTML = settingsView(data);
-  else { state.mainView = 'overview'; renderOverview(); }
+  if (name === 'observe') { setHead('observe'); view.innerHTML = observeView(data); }
+  else if (name === 'memory') { setHead('memory'); view.innerHTML = memoryView(data); }
+  else if (name === 'settings') { setHead('settings'); view.innerHTML = settingsView(data); }
+  else { setHead('overview'); location.hash = '#overview'; renderOverview(); }
   renderChat();
 }
 
@@ -141,6 +147,63 @@ async function send(message) {
   return finished;
 }
 
+// Shell behaviors: rail collapse, dock collapse/reopen, drag resizer, autogrow composer.
+(function () {
+  const body = document.body;
+
+  const navCollapse = document.getElementById('nav-collapse');
+  navCollapse.addEventListener('click', function () {
+    const collapsed = body.classList.toggle('rail-collapsed');
+    navCollapse.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    navCollapse.innerHTML = collapsed ? '&#8250;' : '&#8249;';
+  });
+
+  const dockClose = document.getElementById('dock-close');
+  dockClose.addEventListener('click', function () { body.classList.add('dock-closed'); });
+  document.getElementById('dock-reopen').addEventListener('click', function () {
+    body.classList.remove('dock-closed');
+    const input = document.getElementById('chat-input');
+    if (input) input.focus();
+  });
+
+  const resizer = document.getElementById('dock-resizer');
+  let dragging = false;
+  resizer.addEventListener('mousedown', function (event) {
+    dragging = true;
+    event.preventDefault();
+  });
+  window.addEventListener('mousemove', function (event) {
+    if (!dragging) return;
+    const width = Math.min(640, Math.max(280, window.innerWidth - event.clientX - 8));
+    document.documentElement.style.setProperty('--dock-w', width + 'px');
+  });
+  window.addEventListener('mouseup', function () {
+    if (!dragging) return;
+    dragging = false;
+    try {
+      localStorage.setItem('byo-dock-w',
+        document.documentElement.style.getPropertyValue('--dock-w'));
+    } catch (error) { /* private mode */ }
+  });
+  try {
+    const savedWidth = localStorage.getItem('byo-dock-w');
+    if (savedWidth) document.documentElement.style.setProperty('--dock-w', savedWidth);
+  } catch (error) { /* private mode */ }
+
+  const input = document.getElementById('chat-input');
+  function autogrow() {
+    input.style.height = 'auto';
+    input.style.height = Math.min(160, input.scrollHeight) + 'px';
+  }
+  input.addEventListener('input', autogrow);
+  input.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      document.getElementById('chat-form').requestSubmit();
+    }
+  });
+})();
+
 // Theme toggle: light is the default; the choice persists across visits.
 (function () {
   const button = document.getElementById('theme-toggle');
@@ -165,6 +228,7 @@ document.getElementById('chat-form').addEventListener('submit', async function (
   const message = input.value.trim();
   if (!message) return;
   input.value = '';
+  input.style.height = 'auto';
   await send(message);
 });
 

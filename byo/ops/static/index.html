@@ -3,7 +3,6 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>byo — local agent</title>
   <script>
     // Theme: light by default; a saved choice wins. Runs before CSS to avoid a flash.
     (function () {
@@ -12,33 +11,51 @@
       document.documentElement.setAttribute('data-theme', saved === 'dark' ? 'dark' : 'light');
     })();
   </script>
+  <title>byo — local agent</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <aside class="sidebar">
-    <div class="brand"><span class="brand-sticker">byo</span></div>
-    <nav id="nav">
-      <a href="#overview" data-view="overview">Overview</a>
-      <a href="#chat" data-view="chat">Chat</a>
-      <a href="#observe" data-view="observe">Observability</a>
-      <a href="#memory" data-view="memory">Memory</a>
-      <a href="#settings" data-view="settings">Settings</a>
-    </nav>
-    <button type="button" id="theme-toggle" class="theme-toggle">theme: light</button>
-    <div class="home" id="home-path"></div>
-  </aside>
-  <main id="view"></main>
-  <aside class="chat-rail" id="chat-rail" aria-label="Chat">
-    <div class="chat-head">Chat</div>
-    <div class="chat-scroll">
+  <nav id="nav" class="rail">
+    <div class="r-top">
+      <span class="brand"><span class="brand-sticker">byo</span></span>
+      <button id="nav-collapse" class="r-chev" aria-label="Collapse the sidebar" aria-expanded="true">&#8249;</button>
+    </div>
+    <div class="r-grp">System</div>
+    <a href="#overview" data-view="overview" data-short="O" aria-label="Overview"><span class="lbl">Overview</span></a>
+    <a href="#memory" data-view="memory" data-short="M" aria-label="Memory"><span class="lbl">Memory</span></a>
+    <a href="#observe" data-view="observe" data-short="B" aria-label="Observability"><span class="lbl">Observability</span></a>
+    <div class="r-grp">Setup</div>
+    <a href="#settings" data-view="settings" data-short="S" aria-label="Settings"><span class="lbl">Settings</span></a>
+    <div class="r-bottom">
+      <button type="button" id="theme-toggle" class="theme-toggle">theme: light</button>
+      <div class="home" id="home-path"></div>
+    </div>
+  </nav>
+  <main>
+    <header class="pagehead">
+      <div class="ph-row"><h1 id="title">Overview</h1><div id="ph-actions" class="ph-actions"></div></div>
+      <div class="sub" id="sub"></div>
+    </header>
+    <div id="view"></div>
+  </main>
+  <div class="resizer" id="dock-resizer" title="Drag to resize chat"></div>
+  <aside id="dock">
+    <div class="dockhead">
+      <span class="dt">Chat</span>
+      <button id="dock-close" title="Collapse chat" aria-label="Collapse chat">&rsaquo;</button>
+    </div>
+    <div class="chatlog" id="docklog">
       <div id="chat-live"></div>
       <div id="chat-history"></div>
     </div>
-    <form id="chat-form" autocomplete="off">
-      <input id="chat-input" placeholder="Ask for something, or say what to remember" autocomplete="off">
-      <button type="submit" class="primary">Send</button>
+    <form class="chatbar" id="chat-form" autocomplete="off">
+      <textarea id="chat-input" rows="1" placeholder="Ask for something, or say what to remember" autocomplete="off"></textarea>
+      <div class="chatbar-actions">
+        <button type="submit" class="primary">Send</button>
+      </div>
     </form>
   </aside>
+  <button id="dock-reopen" class="primary" title="Open chat">&lsaquo; Chat</button>
   <script src="/static/js/api.js"></script>
   <script src="/static/js/render.js"></script>
   <script src="/static/js/map.js"></script>

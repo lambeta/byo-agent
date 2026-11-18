@@ -45,3 +45,12 @@ Layout change at the user's direction: the bottom dock is gone; chat is a persis
 The `#chat` nav entry now focuses the composer instead of switching views. Copy touchpoints
 updated ("Say something in the composer to start."). Suite 157 green, ruff clean; served markup
 verified on a scratch port (7799) because 7777 was occupied by another app at test time.
+## Addendum 2026-11-19: shell rebuilt on the waku layout structure
+
+At the user's direction the bento experiment was reverted and the shell rebuilt on the
+reference project's layout anatomy (structure only — no assets, copy or code copied):
+left rail with grouped sections + collapse-to-letters, main with a page head
+(title + subtitle + actions), right chat dock with a drag resizer, collapse button and a
+fixed "‹ Chat" reopen handle, composer is an autogrowing textarea (Enter sends, Shift+Enter
+newlines). Dock width persists in localStorage. The Neobrutalist token skin is unchanged.
+Suite 157 green, ruff clean; shell markers verified on scratch port 7799.

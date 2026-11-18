@@ -14,7 +14,8 @@ def read(name: str) -> str:
 
 def test_overview_is_first_and_loads_map_before_main():
     shell = read("index.html")
-    assert shell.index('data-view="overview"') < shell.index('data-view="chat"')
+    assert shell.index('data-view="overview"') < shell.index('data-view="memory"')
+    assert 'id="dock"' in shell and 'id="nav"' in shell  # rail | main | dock shell
     for script in ("api.js", "render.js", "map.js", "live.js", "observe.js", "dock.js", "main.js"):
         assert "/static/js/" + script in shell, script
     assert shell.index("map.js") < shell.index("live.js") < shell.index("main.js")

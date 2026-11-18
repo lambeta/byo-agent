@@ -225,16 +225,15 @@ function overviewView(data) {
       '" data-map-window="' + name + '" onclick="mapSetWindow(\'' + name + '\')">' +
       (name === 'today' ? 'Today' : name === '7d' ? '7 days' : 'All') + '</button>';
   }).join('');
-  return '<h1>Overview</h1>' +
-    '<div class="map-toolbar"><div id="map-status" class="map-status" role="status" aria-live="polite">Agent idle</div>' +
+  return '<div class="map-toolbar"><div id="map-status" class="map-status" role="status" aria-live="polite">Agent idle</div>' +
     '<div class="map-windows">' + buttons + '</div></div>' +
     '<div id="live-indicator" class="live-indicator" hidden>' +
     '<span class="live-sticker">LIVE</span>' +
     '<button type="button" class="linkish" onclick="mapReturnToLive()">A new turn is running — return to the map</button></div>' +
     '<div class="map-wrap">' + mapSvg(data) + '</div>' +
-    '<details class="map-text bento-2"><summary>Text view of the map</summary><ul class="map-text-list">' +
+    '<details class="map-text"><summary>Text view of the map</summary><ul class="map-text-list">' +
     mapTextList(data) + '</ul></details>' +
-    '<section class="recent bento-4"><div class="section-head"><h2>Recent turns</h2>' +
+    '<section class="recent"><div class="section-head"><h2>Recent turns</h2>' +
     '<span class="meta">' + esc(window === 'today' ? 'today' : window === 'all' ? 'all recorded' : '7 days') +
     '</span></div><div class="recent-list">' + mapRecent(data) + '</div></section>' +
     '<aside id="turn-detail" class="turn-detail" hidden aria-labelledby="detail-title"></aside>';
