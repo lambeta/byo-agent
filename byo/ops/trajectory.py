@@ -11,6 +11,7 @@ and read by another tool; JSON Lines gives that for free and never rewrites hist
 from __future__ import annotations
 
 import json
+import os
 import re
 import secrets
 import threading
@@ -76,6 +77,7 @@ class Trajectory:
         session_id: str = "default",
         model: str = "",
         provider: str = "",
+        pid: int | None = None,
     ) -> str:
         self.turn_id = new_turn_id()
         self.settings.trajectories_dir.mkdir(parents=True, exist_ok=True)
@@ -88,6 +90,7 @@ class Trajectory:
             session_id=session_id,
             model=model,
             provider=provider,
+            pid=os.getpid() if pid is None else pid,
         )
         return self.turn_id
 
@@ -105,5 +108,13 @@ class Trajectory:
             handle.write(line + "\n")
         return event
 
-    def end(self, reply: str, iterations: int) -> None:
-        self.record("turn_end", reply=reply, iterations=iterations)
+    def begin(self, kind: str, **fields: Any) -> dict[str, Any]:
+        """Mark the start of a step as its own record type.
+
+        llm -> llm_start, tool -> tool_start and so on. The completion record keeps its
+        type and fields; a reader that does not know the start types still works.
+        """
+        return self.record(f"{kind}_start", **fields)
+
+    def end(self, reply: str, iterations: int, state: str = "complete") -> None:
+        self.record("turn_end", reply=reply, iterations=iterations, state=state)

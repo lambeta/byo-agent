@@ -87,6 +87,7 @@ def run_loop(
             max_tokens=max_tokens,
         )
         started = time.perf_counter()
+        notify("llm_start", {"iteration": iteration, "model": model})
         try:
             if stream and adapter.capabilities.streaming:
                 response = adapter.stream(
@@ -125,6 +126,7 @@ def run_loop(
         results: list[ToolResultBlock] = []
         for call_block in calls:
             started = time.perf_counter()
+            notify("tool_start", {"tool": call_block.name, "call_id": call_block.id})
             output = tools.execute(call_block.name, call_block.args)
             event = {
                 "tool": call_block.name,
@@ -168,6 +170,7 @@ def _final_answer(
         tool_choice="none",
     )
     started = time.perf_counter()
+    notify("llm_start", {"iteration": result.iterations + 1, "model": model, "kind": "final"})
     try:
         response = adapter.complete(request)
     except ModelError as exc:

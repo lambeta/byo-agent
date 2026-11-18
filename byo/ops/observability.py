@@ -90,8 +90,17 @@ def group_turns(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return turns
 
 
+# Start markers and the context mark describe when a step ran, not a step of its own:
+# they must never appear as a turn step or add to spend.
+NOT_STEPS = frozenset(
+    {"gate_start", "llm_start", "tool_start", "consolidation_start", "context"}
+)
+
+
 def _step(event: dict[str, Any], provider: str, model: str) -> dict[str, Any] | None:
     kind = event.get("type")
+    if kind in NOT_STEPS:
+        return None
     base = {"kind": kind, "ts": event.get("ts")}
     if kind == "gate":
         return {
@@ -182,6 +191,8 @@ def spend(events: list[dict[str, Any]]) -> dict[str, Any]:
     by_model: dict[str, float] = {}
     total = 0.0
     for event in events:
+        if event.get("type") in NOT_STEPS:
+            continue
         if event.get("type") == "receipt":
             usd = float(event.get("total_usd", 0) or 0)
             day = str(event.get("ts", ""))[:10]

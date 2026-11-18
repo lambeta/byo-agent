@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import urllib.error
 import urllib.request
@@ -121,7 +122,19 @@ def test_map_payload_contract(server):
     assert payload["cursor"] == 0
     assert payload["skipped_lines"] == 0
     assert set(payload["map"]["event_map"]) == {
-        "turn_start", "gate", "llm", "tool", "consolidation", "receipt", "error", "turn_end"
+        "turn_start",
+        "gate_start",
+        "gate",
+        "context",
+        "llm_start",
+        "llm",
+        "tool_start",
+        "tool",
+        "consolidation_start",
+        "consolidation",
+        "receipt",
+        "error",
+        "turn_end",
     }
 
 
@@ -152,6 +165,7 @@ def test_map_active_and_cursor(server, settings):
                 "source": "cli",
                 "session_id": "default",
                 "ts": "2026-11-18T10:00:00.000+08:00",
+                "pid": os.getpid(),
             }
         ],
     )
@@ -164,6 +178,44 @@ def test_map_active_and_cursor(server, settings):
     assert feed["events"] == []
     assert feed["cursor"] == 1
     assert feed["skipped"] == 0
+
+
+def test_an_unfinished_turn_with_a_dead_writer_is_not_active(server, settings):
+    write(
+        settings,
+        [
+            {
+                "type": "turn_start",
+                "turn_id": "t_dead",
+                "user_message": "died",
+                "source": "cli",
+                "session_id": "default",
+                "ts": "2026-11-18T10:00:00.000+08:00",
+                "pid": 999999,
+            }
+        ],
+    )
+    payload = json.loads(get(server, "/api/map?window=7d")[1])
+    assert payload["active"] is None
+    assert payload["turns"][0]["state"] == "unfinished"
+
+
+def test_a_record_from_before_pids_existed_is_never_active(server, settings):
+    write(
+        settings,
+        [
+            {
+                "type": "turn_start",
+                "turn_id": "t_legacy",
+                "user_message": "old",
+                "source": "cli",
+                "session_id": "default",
+                "ts": "2026-11-18T10:00:00.000+08:00",
+            }
+        ],
+    )
+    payload = json.loads(get(server, "/api/map?window=7d")[1])
+    assert payload["active"] is None
 
 
 def test_turn_detail_route(server, settings):

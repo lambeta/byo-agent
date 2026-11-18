@@ -1,5 +1,10 @@
 # Contract — Live feed and lighting
 
+> **Superseded for the Overview map** by
+> [`specs/004-runtime-highlight-fidelity/contracts/live-api.md`](../../004-runtime-highlight-fidelity/contracts/live-api.md).
+> The map now polls `GET /api/live` and applies server-projected cues; this file still describes
+> the v1 `/api/events` cursor feed, whose contract is unchanged.
+
 **Version**: 1 · **Owner**: `byo/ops/static/js/live.js` with `map.js` · **Tests**: manual quickstart; server-side mapping in `test_map.py`
 
 The live layer turns the trajectory feed into one short highlight sequence. It never starts, stops or

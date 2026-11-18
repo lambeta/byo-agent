@@ -12,14 +12,16 @@ from __future__ import annotations
 
 import json
 import threading
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from byo.app import Agent
 from byo.config import Settings, load_settings, missing_key_message
+from byo.ops import feed as feed_mod
+from byo.ops import highlight, observability, turn_detail
 from byo.ops import map as map_ops
-from byo.ops import observability, turn_detail
 from byo.ops.receipt import build as build_receipt
 from byo.ops.trajectory import redact
 
@@ -47,6 +49,7 @@ class Dashboard:
         self.settings = settings
         self.agent = agent or Agent(settings)
         self.lock = threading.Lock()
+        self.feed = feed_mod.Feed("7d")
 
     # ---- payloads ---------------------------------------------------
     def data(self) -> dict:
@@ -99,6 +102,53 @@ class Dashboard:
             session_id=self.agent.session.session_id,
         )
 
+    def live_payload(self) -> dict:
+        """What the map polls: the newest turn's cues and whether it is live.
+
+        The whole cue list is returned every time, so a turn that ends between two polls
+        still delivers its last cues; the client diffs by seq.
+        """
+        events, skipped = self.feed.snapshot(self.settings.home)
+        generated_at = datetime.now().astimezone().isoformat(timespec="seconds")
+        turns = observability.group_turns(events)
+        if not turns:
+            return {
+                "generated_at": generated_at,
+                "active": False,
+                "turn": None,
+                "seq": 0,
+                "cues": [],
+                "status": "Agent idle",
+                "skipped": skipped,
+                "poll_ms": 1000,
+            }
+        turn = turns[-1]
+        turn_id = turn.get("turn_id")
+        own = [event for event in events if event.get("turn_id") == turn_id]
+        state = highlight.turn_state(own)
+        units = highlight.cues(own, memory_enabled=self.agent.memory is not None)
+        if state == "interrupted":
+            extra = highlight.interrupted_cue(own)
+            extra["seq"] = len(units)
+            units.append(extra)
+        active = state == "running"
+        return {
+            "generated_at": generated_at,
+            "active": active,
+            "turn": {
+                "turn_id": turn_id,
+                "source": turn.get("source"),
+                "started_at": turn.get("started_at"),
+                "ended_at": turn.get("ended_at"),
+                "state": state,
+            },
+            "seq": len(units),
+            "cues": units,
+            "status": units[-1]["label"] if units else "Agent idle",
+            "skipped": skipped,
+            "poll_ms": 100 if active else 1000,
+        }
+
     def turn_payload(self, turn_id: str, window: str) -> dict | None:
         return turn_detail.detail(
             self.settings.home,
@@ -115,6 +165,9 @@ class Dashboard:
             "has_key": bool(self.settings.api_key),
             "home": str(self.settings.home),
         }
+
+    def new_session(self) -> dict:
+        return {"ok": True, "session_id": self.agent.new_session()}
 
     def history(self, session_id: str) -> dict:
         rows = self.agent.conn.execute(
@@ -248,9 +301,11 @@ def make_handler(dash: Dashboard):
                     if payload is None:
                         return _error(self, 404, "not_found", f"no turn {turn_id} in {window}")
                     return _json(self, 200, payload)
+                if path == "/api/live":
+                    return _json(self, 200, dash.live_payload())
                 if path == "/api/events":
                     cursor = int((query.get("cursor") or ["0"])[0] or 0)
-                    events, skipped = observability.read_events(dash.settings.home, "7d")
+                    events, skipped = dash.feed.snapshot(dash.settings.home)
                     return _json(
                         self,
                         200,
@@ -270,7 +325,10 @@ def make_handler(dash: Dashboard):
                     return _json(
                         self,
                         200,
-                        {"sessions": dash.data()["sessions"], "current": "default"},
+                        {
+                            "sessions": dash.data()["sessions"],
+                            "current": dash.agent.session.session_id,
+                        },
                     )
                 if path == "/api/memory":
                     return _json(self, 200, dash.memory())
@@ -307,6 +365,10 @@ def make_handler(dash: Dashboard):
                     return _json(self, 200, result)
                 if path == "/api/settings":
                     return _json(self, 200, dash.save_settings(payload))
+                if path == "/api/session":
+                    if payload.get("action") == "new":
+                        return _json(self, 200, dash.new_session())
+                    return _error(self, 400, "bad_request", "unknown session action")
                 return _error(self, 404, "not_found", f"no route for {path}")
             except ValueError as exc:
                 return _error(self, 400, "bad_request", str(exc))

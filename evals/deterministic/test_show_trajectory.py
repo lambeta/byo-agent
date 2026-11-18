@@ -35,6 +35,32 @@ def test_render_prints_the_turn_and_skips_a_bad_line(settings, tmp_path):
     assert "tool · list_events" in text
 
 
+def test_start_markers_render_readably(settings):
+    settings.trajectories_dir.mkdir(parents=True, exist_ok=True)
+    path = settings.trajectories_dir / "2026-11-18.jsonl"
+    path.write_text(
+        '{"type": "gate_start", "turn_id": "t_1", "model": "small", '
+        '"ts": "2026-11-18T10:00:00.000+08:00"}\n'
+        '{"type": "context", "turn_id": "t_1", "recalled": true, "recalled_chars": 42, '
+        '"duration_ms": 3, "ts": "2026-11-18T10:00:00.100+08:00"}\n'
+        '{"type": "llm_start", "turn_id": "t_1", "iteration": 1, "model": "big", '
+        '"ts": "2026-11-18T10:00:00.200+08:00"}\n'
+        '{"type": "tool_start", "turn_id": "t_1", "tool": "list_events", '
+        '"ts": "2026-11-18T10:00:01.000+08:00"}\n'
+        '{"type": "consolidation_start", "turn_id": "t_1", "pending": 6, '
+        '"ts": "2026-11-18T10:00:02.000+08:00"}\n',
+        encoding="utf-8",
+    )
+    out, buffer = console()
+    assert render(path, out) == 5
+    text = buffer.getvalue()
+    assert "gate start · small" in text
+    assert "context · assembled in 3 ms · remembered 42 chars" in text
+    assert "llm start · loop · iteration 1 · big" in text
+    assert "tool start · list_events" in text
+    assert "memory start · 6 pending" in text
+
+
 def test_unknown_event_renders_generically(settings):
     settings.trajectories_dir.mkdir(parents=True, exist_ok=True)
     path = settings.trajectories_dir / "2026-11-18.jsonl"

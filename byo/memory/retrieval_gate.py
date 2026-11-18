@@ -45,9 +45,21 @@ def decide(adapter, model: str, message: str, max_tokens: int = 256) -> dict[str
     try:
         response = adapter.complete(request)
     except ModelError as exc:
-        return {"decision": "retrieve", "reason": f"gate failed open ({exc.kind})"}
+        return {
+            "decision": "retrieve",
+            "reason": f"gate failed open ({exc.kind})",
+            "degraded": True,
+        }
     data = first_json(response.text())
     if not data or "needs_memory" not in data:
-        return {"decision": "retrieve", "reason": "gate answered unclearly; retrieved anyway"}
+        return {
+            "decision": "retrieve",
+            "reason": "gate answered unclearly; retrieved anyway",
+            "degraded": True,
+        }
     decision = "retrieve" if data.get("needs_memory") else "skip"
-    return {"decision": decision, "reason": str(data.get("reason") or "")}
+    return {
+        "decision": decision,
+        "reason": str(data.get("reason") or ""),
+        "degraded": False,
+    }

@@ -63,13 +63,30 @@ def test_reduced_motion_and_text_view_are_present():
     assert ".turn-detail" in css
 
 
-def test_live_player_is_read_only_and_cursor_driven():
+def test_live_player_is_a_cue_sequencer():
     live = read("js/live.js")
-    symbols = ("/api/events?cursor=", "MapLive", "reconnecting", "caught up", "mapMarkUnreached")
+    symbols = (
+        "/api/live",
+        "MapLive",
+        "reconnecting",
+        "caught up",
+        "mapApplyCueEdges",
+        "MAP_LIVE_DWELL",
+        "applyCue",
+    )
     for symbol in symbols:
         assert symbol in live, symbol
     assert "method: 'POST'" not in live
-    assert "fetch('/api/events" in live
+    assert "fetch('/api/live" in live
+    # No global cadence constant: the only pacing is the 150 ms dwell and the 1 s lag bound.
+    assert "550" not in live
+    assert "650" not in live
+
+
+def test_the_map_exposes_the_cue_and_note_hooks():
+    script = read("js/map.js")
+    for symbol in ("mapApplyCueEdges", "mapNote", 'id="map-note"'):
+        assert symbol in script, symbol
 
 def test_shell_loads_all_seven_scripts_in_order():
     shell = read("index.html")

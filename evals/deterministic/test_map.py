@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 from byo.ops import map as map_ops
 
@@ -116,8 +117,24 @@ def test_event_map_covers_the_recorded_vocabulary():
     data = map_ops.graph()
     event_map = data["event_map"]
     assert set(event_map) == {
-        "turn_start", "gate", "llm", "tool", "consolidation", "receipt", "error", "turn_end"
+        "turn_start",
+        "gate_start",
+        "gate",
+        "context",
+        "llm_start",
+        "llm",
+        "tool_start",
+        "tool",
+        "consolidation_start",
+        "consolidation",
+        "receipt",
+        "error",
+        "turn_end",
     }
+    # A model call no longer lights the working context: the context has its own mark.
+    assert "context" not in event_map["llm"]["nodes"]
+    assert event_map["llm_start"]["nodes"] == ["model"]
+    assert event_map["turn_start"]["mark"] == "record"
     nodes = {node["id"] for node in data["nodes"]}
     edges = {edge["id"] for edge in data["edges"]}
     for entry in event_map.values():
@@ -183,6 +200,7 @@ def test_an_unfinished_turn_is_active_with_its_events(settings, conn):
             "source": "cli",
             "session_id": "default",
             "ts": "2026-11-18T10:00:00.000+08:00",
+            "pid": os.getpid(),
         }
     ]
     write(settings, events)

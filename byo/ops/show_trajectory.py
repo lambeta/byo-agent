@@ -65,6 +65,23 @@ def summary(event: dict) -> str:
             f"receipt · USD {usd} · {event.get('tokens_in', 0)} in / "
             f"{event.get('tokens_out', 0)} out"
         )
+    if kind == "gate_start":
+        return f"gate start · {event.get('model', '?')}"
+    if kind == "llm_start":
+        label = "final" if event.get("kind") == "final" else "loop"
+        iteration = event.get("iteration", "?")
+        model = event.get("model", "?")
+        return f"llm start · {label} · iteration {iteration} · {model}"
+    if kind == "tool_start":
+        return f"tool start · {event.get('tool', '?')}"
+    if kind == "context":
+        remembered = event.get("recalled_chars", 0)
+        return (
+            f"context · assembled in {event.get('duration_ms', 0)} ms · "
+            f"remembered {remembered} chars"
+        )
+    if kind == "consolidation_start":
+        return f"memory start · {event.get('pending', 0)} pending"
     if kind == "error":
         return f"error · {event.get('stage')} · {_short(event.get('message', ''))}"
     fields = {k: v for k, v in event.items() if k not in {"type", "ts"}}

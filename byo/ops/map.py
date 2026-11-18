@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from byo.config import Settings
+from byo.ops.liveness import alive as process_alive
 from byo.ops.observability import build_turn, group_turns, read_events, spend
 
 WINDOWS = ("today", "7d", "all")
@@ -154,20 +155,36 @@ EDGES: list[dict[str, Any]] = [
 EVENT_MAP: dict[str, dict[str, Any]] = {
     "turn_start": {
         "nodes": ["surfaces"], "edges": ["e-surfaces-gate"], "label": "message in",
+        "mark": "record",
+    },
+    "gate_start": {
+        "nodes": ["gate"], "edges": [], "label": "memory decision",
     },
     "gate": {
-        "nodes": ["gate"], "edges": ["e-gate-context"], "label": "memory decision",
+        "nodes": ["gate"], "edges": [], "label": "memory decision",
         "retrieve": {
             "nodes": ["facts", "episodes", "persona"],
             "edges": ["e-gate-facts", "e-gate-episodes", "e-gate-persona"],
         },
     },
+    "context": {
+        "nodes": ["context"], "edges": ["e-gate-context"], "label": "context assembled",
+    },
+    "llm_start": {
+        "nodes": ["model"], "edges": ["e-context-model"], "label": "model reasons",
+    },
     "llm": {
-        "nodes": ["context", "model"], "edges": ["e-context-model"],
-        "label": "model reasons", "final_label": "final answer",
+        "nodes": ["model"], "edges": [],
+        "label": "model answered", "final_label": "final answer",
+    },
+    "tool_start": {
+        "nodes": ["tools"], "edges": ["e-model-tools"], "label": "tool runs",
     },
     "tool": {
-        "nodes": ["tools"], "edges": ["e-model-tools", "e-tools-model"], "label": "tool runs",
+        "nodes": ["tools"], "edges": ["e-tools-model"], "label": "tool runs",
+    },
+    "consolidation_start": {
+        "nodes": ["consolidation"], "edges": [], "label": "memory written",
     },
     "consolidation": {
         "nodes": ["consolidation", "facts"], "edges": ["e-consolidation-facts"],
@@ -298,11 +315,28 @@ def turn_summaries(turns: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
-def _active(events: list[dict[str, Any]], turns: list[dict[str, Any]]) -> dict[str, Any] | None:
+def _turn_pid(events: list[dict[str, Any]], turn_id: str) -> Any:
+    for event in reversed(events):
+        if event.get("type") == "turn_start" and event.get("turn_id") == turn_id:
+            return event.get("pid")
+    return None
+
+
+def _active(
+    events: list[dict[str, Any]],
+    turns: list[dict[str, Any]],
+    is_alive=process_alive,
+) -> dict[str, Any] | None:
+    """Live only: an unfinished turn whose writer process is still there.
+
+    A record without a pid predates this feature, so it can never be shown as running.
+    """
     if not turns or turns[-1].get("state") != "unfinished":
         return None
     turn = turns[-1]
     turn_id = turn.get("turn_id")
+    if not is_alive(_turn_pid(events, turn_id)):
+        return None
     return {
         "turn": {
             "turn_id": turn_id,

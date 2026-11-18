@@ -46,10 +46,12 @@ class Memory:
             return "\n".join(f"- {row['happened_at']}: {row['summary']}" for row in episodes)
         return ""
 
-    def maybe_consolidate(self, recalled: str = "") -> dict[str, Any] | None:
+    def maybe_consolidate(self, recalled: str = "", on_start=None) -> dict[str, Any] | None:
         pending = len(consolidation_mod.pending_rows(self.conn))
         if pending < self.settings.consolidate_every:
             return None
+        if on_start is not None:
+            on_start(pending)
         note = consolidation_mod.consolidate(
             self.conn,
             self.adapter,

@@ -79,6 +79,25 @@ function mapSetEdgeState(id, state) {
   if (el) el.setAttribute('data-state', state);
 }
 
+// The projection sends the complete set of edges that are live after a cue; everything
+// else goes dark, so a connection can never stay lit past the flow it depicts.
+function mapApplyCueEdges(ids) {
+  if (!MAP_STATE.data || !MAP_STATE.data.map) return;
+  const live = new Set(ids || []);
+  MAP_STATE.data.map.edges.forEach(function (edge) {
+    mapSetEdgeState(edge.id, live.has(edge.id) ? 'live' : 'idle');
+  });
+}
+
+// Transport notices (caught up, reconnecting, skipped lines) live beside the step line so
+// they can never replace the name of the step that is running.
+function mapNote(text, kind) {
+  const el = document.getElementById('map-note');
+  if (!el) return;
+  el.textContent = text || '';
+  if (kind) el.setAttribute('data-kind', kind); else el.removeAttribute('data-kind');
+}
+
 function mapResetNodes() {
   if (!MAP_STATE.data || !MAP_STATE.data.map) return;
   MAP_STATE.data.map.nodes.forEach(function (node) { mapSetNodeState(node.id, 'idle'); });
@@ -226,6 +245,7 @@ function overviewView(data) {
       (name === 'today' ? 'Today' : name === '7d' ? '7 days' : 'All') + '</button>';
   }).join('');
   return '<div class="map-toolbar"><div id="map-status" class="map-status" role="status" aria-live="polite">Agent idle</div>' +
+    '<span id="map-note" class="map-note" role="status" aria-live="polite"></span>' +
     '<div class="map-windows">' + buttons + '</div></div>' +
     '<div id="live-indicator" class="live-indicator" hidden>' +
     '<span class="live-sticker">LIVE</span>' +

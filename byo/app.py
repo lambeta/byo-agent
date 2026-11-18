@@ -2,7 +2,9 @@
 
 Mechanism: settings -> database -> tools -> session -> loop, assembled once. Every
 observer event is recorded in the trajectory before it reaches the surface, so the
-card and the file can never disagree.
+card and the file can never disagree. A step's start is recorded too, so the file can
+answer when the step was running; a turn always ends with a terminal record, even when
+it raises.
 
 Rejected alternative: letting each gateway write its own trajectory lines. Two
 writers would drift, and one of them would eventually forget to redact.
@@ -24,7 +26,7 @@ from byo.ops.trajectory import Trajectory
 from byo.runtime.session import Session
 from byo.tools import build_registry
 
-RECORDED = ("llm", "tool", "gate", "consolidation", "error")
+RECORDED = ("llm", "tool", "gate", "consolidation", "error", "llm_start", "tool_start")
 
 
 AUTO = object()
@@ -69,6 +71,7 @@ class Agent:
             model=self.settings.effective_model(),
             provider=self.settings.provider,
         )
+        ended = False
 
         def observe(kind: str, event: dict) -> None:
             if kind in RECORDED:
@@ -76,62 +79,94 @@ class Agent:
             if observer is not None:
                 observer(kind, event)
 
-        if self.memory is not None:
-            gate = self.memory.gate(message)
-            self.trajectory.record("gate", **gate)
-            if observer is not None:
-                observer("gate", gate)
+        try:
+            if self.memory is not None:
+                self.trajectory.begin("gate", model=self.settings.effective_small_model())
+                gate = self.memory.gate(message)
+                self.trajectory.record("gate", **gate)
+                if observer is not None:
+                    observer("gate", gate)
 
-        self.session.note_user(message)
-        system = self.session.build_system(message)
-        result = run_loop(
-            self.adapter,
-            self.settings.effective_model(),
-            system,
-            list(self.session.history),
-            self.tools,
-            max_iterations=self.settings.max_iterations,
-            max_tokens=self.settings.max_tokens,
-            observer=observe,
-            stream=stream,
-            trim=shrink,
-        )
-        self.session.note_assistant(result.reply)
+            self.session.note_user(message)
+            assembled = time.perf_counter()
+            system = self.session.build_system(message)
+            recalled = self.session.recalled or ""
+            self.trajectory.record(
+                "context",
+                recalled=bool(recalled),
+                recalled_chars=len(recalled),
+                duration_ms=int((time.perf_counter() - assembled) * 1000),
+            )
 
-        receipt = build_receipt(result.llm_calls, len(result.tool_calls))
-        self.trajectory.record(
-            "receipt",
-            total_usd=receipt["usd"],
-            tokens_in=receipt["tokens_in"],
-            tokens_out=receipt["tokens_out"],
-            iterations=receipt["iterations"],
-            tool_calls=receipt["tool_calls"],
-            estimate=receipt["estimate"],
-        )
+            result = run_loop(
+                self.adapter,
+                self.settings.effective_model(),
+                system,
+                list(self.session.history),
+                self.tools,
+                max_iterations=self.settings.max_iterations,
+                max_tokens=self.settings.max_tokens,
+                observer=observe,
+                stream=stream,
+                trim=shrink,
+            )
+            self.session.note_assistant(result.reply)
 
-        elapsed_ms = int((time.perf_counter() - started) * 1000)
-        self._log(message, result, source, elapsed_ms)
+            receipt = build_receipt(result.llm_calls, len(result.tool_calls))
+            self.trajectory.record(
+                "receipt",
+                total_usd=receipt["usd"],
+                tokens_in=receipt["tokens_in"],
+                tokens_out=receipt["tokens_out"],
+                iterations=receipt["iterations"],
+                tool_calls=receipt["tool_calls"],
+                estimate=receipt["estimate"],
+            )
 
-        if self.memory is not None:
-            note = None
-            try:
-                note = self.memory.maybe_consolidate(recalled=self.session.recalled)
-            except Exception as exc:  # noqa: BLE001 - consolidation never fails a turn
+            elapsed_ms = int((time.perf_counter() - started) * 1000)
+            self._log(message, result, source, elapsed_ms)
+
+            if self.memory is not None:
+                note = None
+                try:
+                    note = self.memory.maybe_consolidate(
+                        recalled=self.session.recalled,
+                        on_start=lambda pending: self.trajectory.begin(
+                            "consolidation", pending=pending
+                        ),
+                    )
+                except Exception as exc:  # noqa: BLE001 - consolidation never fails a turn
+                    failure = {
+                        "stage": "consolidation",
+                        "error_kind": "Internal",
+                        "message": f"{type(exc).__name__}: {exc}",
+                    }
+                    self.trajectory.record("error", **failure)
+                    if observer is not None:
+                        observer("error", failure)
+                if note:
+                    self.trajectory.record("consolidation", **note)
+                    if observer is not None:
+                        observer("consolidation", note)
+
+            state = "complete"
+            if result.error:
+                state = "failed"
+            elif result.limit_reached:
+                state = "limited"
+            self.trajectory.end(result.reply, result.iterations, state=state)
+            ended = True
+            return result
+        except BaseException as exc:
+            if not ended:
                 failure = {
-                    "stage": "consolidation",
-                    "error_kind": "Internal",
+                    "stage": "turn",
+                    "error_kind": type(exc).__name__,
                     "message": f"{type(exc).__name__}: {exc}",
                 }
                 self.trajectory.record("error", **failure)
-                if observer is not None:
-                    observer("error", failure)
-            if note:
-                self.trajectory.record("consolidation", **note)
-                if observer is not None:
-                    observer("consolidation", note)
-
-        self.trajectory.end(result.reply, result.iterations)
-        return result
+                self.trajectory.end("", 0, state="failed")
+            raise
 
     def _log(self, message: str, result: LoopResult, source: str, elapsed_ms: int) -> None:
         meta = json.dumps(
@@ -153,6 +188,15 @@ class Agent:
             (result.reply, self.session.session_id, source, meta),
         )
         self.conn.commit()
+
+    def new_session(self) -> str:
+        """Start a fresh chat session: new id, empty working history.
+
+        Past sessions stay in chat_log; only the in-memory working set resets.
+        """
+        session_id = "s-" + time.strftime("%Y%m%d-%H%M%S")
+        self.session = Session(self.settings, memory=self.memory, session_id=session_id)
+        return session_id
 
     def close(self) -> None:
         with contextlib.suppress(Exception):

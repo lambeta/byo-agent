@@ -50,6 +50,8 @@ def test_trajectory_vocabulary(settings):
     agent.respond("what is on friday")
     kinds = [event["type"] for event in agent.trajectory.events]
     assert kinds[0] == "turn_start" and kinds[-1] == "turn_end"
+    # 002 FR-025 is amended by 004: start markers are additive observations written
+    # through the same sink. The eight original types remain the completion vocabulary.
     assert set(kinds) <= {
         "turn_start",
         "gate",
@@ -59,7 +61,13 @@ def test_trajectory_vocabulary(settings):
         "receipt",
         "error",
         "turn_end",
+        "gate_start",
+        "llm_start",
+        "tool_start",
+        "consolidation_start",
+        "context",
     }
+    assert {"llm_start", "tool_start"} <= set(kinds)
     agent.close()
 
 

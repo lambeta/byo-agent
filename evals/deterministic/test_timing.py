@@ -22,7 +22,7 @@ def test_every_step_precedes_the_reply_across_a_corpus(settings):
 
         agent.respond("hello", observer=observer)
         assert seen, "a turn always produces at least one step"
-        assert seen[0][0] == "llm"
+        assert seen[0][0] == "llm_start"
         first_step_ms.append(seen[0][1])
         agent.close()
     assert len(first_step_ms) == 10

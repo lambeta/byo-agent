@@ -46,7 +46,14 @@ def test_tool_turn_feeds_the_result_back():
     assert result.reply == "done"
     assert calls == ["x"]
     assert result.tool_calls[0]["output"] == "echo:x"
-    assert [kind for kind, _ in events] == ["llm", "tool", "llm"]
+    assert [kind for kind, _ in events] == [
+        "llm_start",
+        "llm",
+        "tool_start",
+        "tool",
+        "llm_start",
+        "llm",
+    ]
     second = adapter.calls[1]
     last = second.messages[-1]
     assert last.blocks[0].content == "echo:x"

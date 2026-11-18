@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="byo/ops/static/brand/wordmark.svg" alt="byo — a small, local-first agent" height="140">
+</p>
+
 # byo-agent
 
 A small, local-first agent you can read in an afternoon: **harness, loop, memory, operations**.
@@ -30,8 +34,10 @@ make lint
 ```
 
 The dashboard opens on **Overview**: the runtime map of surfaces, the memory gate, working
-context, the loop and tools, the reply, the memory stores, the trajectory and spend. It lights the
-parts involved as a turn runs, from the browser or the terminal. Click a node to open its view;
+context, the loop and tools, the reply, the memory stores, the trajectory and spend. It lights a
+part when its step actually starts and keeps it lit for as long as the step runs — a two-second
+model call is a two-second light, not a pulse — and every round and tool call stays countable. From
+the browser or the terminal, the map is a projection of the recorded turn, never a re-enactment. Click a node to open its view;
 click a loop, tool or reply (or a turn in the list) to read one turn's summary, one-axis timeline,
 hotspots and raw record. Evals and release stay command-line tools and are deliberately not on the
 map.
