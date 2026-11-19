@@ -56,6 +56,10 @@ class Agent:
         self.session = Session(self.settings, memory=memory)
         self.trajectory = Trajectory(self.settings)
 
+    # Turn/session binding: a turn owns the Session it started in. A new chat may be
+    # created while it runs; the local session keeps its history and chat_log rows in
+    # the chat that sent it. Rejected alternatives: refusing new_session while the lock
+    # is held, or routing a session id through every loop call.
     def respond(
         self,
         message: str,
@@ -66,17 +70,21 @@ class Agent:
         message = (message or "").strip()
         if not message:
             return LoopResult(reply="", messages=[])
+        session = self.session
         started = time.perf_counter()
         self.trajectory.start(
             message,
             source=source,
-            session_id=self.session.session_id,
+            session_id=session.session_id,
             model=self.settings.effective_model(),
             provider=self.settings.provider,
         )
         ended = False
+        partial: list[str] = []
 
         def observe(kind: str, event: dict) -> None:
+            if kind == "text":
+                partial.append(str(event.get("delta") or ""))
             if kind in RECORDED:
                 self.trajectory.record(kind, **event)
             if observer is not None:
@@ -90,10 +98,10 @@ class Agent:
                 if observer is not None:
                     observer("gate", gate)
 
-            self.session.note_user(message)
+            session.note_user(message)
             assembled = time.perf_counter()
-            system = self.session.build_system(message)
-            recalled = self.session.recalled or ""
+            system = session.build_system(message)
+            recalled = session.recalled or ""
             self.trajectory.record(
                 "context",
                 recalled=bool(recalled),
@@ -105,7 +113,7 @@ class Agent:
                 self.adapter,
                 self.settings.effective_model(),
                 system,
-                list(self.session.history),
+                list(session.history),
                 self.tools,
                 max_iterations=self.settings.max_iterations,
                 max_tokens=self.settings.max_tokens,
@@ -113,7 +121,7 @@ class Agent:
                 stream=stream,
                 trim=shrink,
             )
-            self.session.note_assistant(result.reply)
+            session.note_assistant(result.reply)
 
             receipt = build_receipt(result.llm_calls, len(result.tool_calls))
             self.trajectory.record(
@@ -127,13 +135,13 @@ class Agent:
             )
 
             elapsed_ms = int((time.perf_counter() - started) * 1000)
-            self._log(message, result, source, elapsed_ms)
+            self._log(message, result, source, elapsed_ms, "".join(partial), session.session_id)
 
             if self.memory is not None:
                 note = None
                 try:
                     note = self.memory.maybe_consolidate(
-                        recalled=self.session.recalled,
+                        recalled=session.recalled,
                         on_start=lambda pending: self.trajectory.begin(
                             "consolidation", pending=pending
                         ),
@@ -171,7 +179,16 @@ class Agent:
                 self.trajectory.end("", 0, state="failed")
             raise
 
-    def _log(self, message: str, result: LoopResult, source: str, elapsed_ms: int) -> None:
+    def _log(
+        self,
+        message: str,
+        result: LoopResult,
+        source: str,
+        elapsed_ms: int,
+        partial: str = "",
+        session_id: str = "default",
+    ) -> None:
+        state = "failed" if result.error else ("limited" if result.limit_reached else "complete")
         meta = json.dumps(
             {
                 "turn_id": self.trajectory.turn_id,
@@ -179,16 +196,18 @@ class Agent:
                 "tools": [call["tool"] for call in result.tool_calls],
                 "limit_reached": result.limit_reached,
                 "elapsed_ms": elapsed_ms,
+                "state": state,
+                "partial": partial[:4000] if result.error else "",
             }
         )
         self.conn.execute(
             "INSERT INTO chat_log (role, content, session_id, source) VALUES ('user', ?, ?, ?)",
-            (message, self.session.session_id, source),
+            (message, session_id, source),
         )
         self.conn.execute(
             "INSERT INTO chat_log (role, content, session_id, source, meta) "
             "VALUES ('assistant', ?, ?, ?, ?)",
-            (result.reply, self.session.session_id, source, meta),
+            (result.reply, session_id, source, meta),
         )
         self.conn.commit()
 

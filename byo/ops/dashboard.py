@@ -223,17 +223,20 @@ class Dashboard:
         messages = []
         for row in rows:
             item = dict(row)
-            turn_id = ""
+            meta = {}
             if item.get("meta"):
                 try:
-                    meta = json.loads(item["meta"])
+                    parsed = json.loads(item["meta"])
                 except (TypeError, ValueError):
-                    meta = {}
-                if isinstance(meta, dict):
-                    turn_id = str(meta.get("turn_id") or "")
+                    parsed = {}
+                if isinstance(parsed, dict):
+                    meta = parsed
             # The assistant row carries the turn id, so the chat can load that
             # turn's thinking and tool calls on demand.
-            item["turn_id"] = turn_id if item.get("role") == "assistant" else ""
+            assistant = item.get("role") == "assistant"
+            item["turn_id"] = str(meta.get("turn_id") or "") if assistant else ""
+            item["state"] = str(meta.get("state") or "complete") if assistant else ""
+            item["partial"] = str(meta.get("partial") or "") if assistant else ""
             messages.append(item)
         return {"session_id": session_id, "messages": messages}
 
@@ -713,10 +716,20 @@ def make_handler(dash: Dashboard):
                         "reply": result.reply,
                         "receipt": receipt,
                         "limit_reached": result.limit_reached,
+                        "failed": bool(result.error),
                     },
                 )
             except BrokenPipeError:
                 pass
+            except Exception as exc:  # noqa: BLE001 - report a failed turn, never a fake done
+                send(
+                    "error",
+                    {
+                        "stage": "turn",
+                        "error_kind": type(exc).__name__,
+                        "message": f"{type(exc).__name__}: {exc}",
+                    },
+                )
             finally:
                 dash.lock.release()
 

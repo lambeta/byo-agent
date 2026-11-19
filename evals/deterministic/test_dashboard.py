@@ -101,6 +101,11 @@ def test_a_client_disconnect_does_not_cancel_the_turn(settings):
             time.sleep(0.05)
         assert '"turn_end"' in written, "the turn must finish after the client is gone"
         assert "finished anyway" in written
+        rows = agent.conn.execute(
+            "SELECT role, content FROM chat_log WHERE session_id = ? ORDER BY id",
+            ("default",),
+        ).fetchall()
+        assert [row["content"] for row in rows] == ["go", "finished anyway"]
     finally:
         srv.shutdown()
         srv.server_close()

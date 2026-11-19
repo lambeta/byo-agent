@@ -170,6 +170,12 @@ main { overflow: auto; min-width: 0; display: flex; flex-direction: column; }
 #dock-close { box-shadow: none; border-color: transparent; padding: 2px 8px; }
 #dock-close:hover { border-color: var(--byo-ink); box-shadow: var(--byo-shadow-row); }
 .chatlog { flex: 1; min-height: 0; overflow-y: auto; padding: var(--byo-space-3); }
+.chat-notice {
+  margin: 0; padding: 6px var(--byo-space-3);
+  color: var(--byo-ink-soft); font: var(--byo-text-3) var(--byo-font-mono);
+  border-bottom: var(--byo-contour-w) dashed var(--byo-ink);
+}
+.chat-notice:empty { display: none; }
 .sesshead {
   display: flex; gap: var(--byo-space-1); align-items: center;
   padding: var(--byo-space-1) var(--byo-space-2);
@@ -196,6 +202,16 @@ main { overflow: auto; min-width: 0; display: flex; flex-direction: column; }
   letter-spacing: var(--byo-track-wide); opacity: 0.75; margin-bottom: 2px;
 }
 .bubble-body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--byo-text-1); }
+.bubble-partial {
+  border-left: var(--byo-contour-w-strong) solid var(--byo-accent-bad);
+  padding: 6px var(--byo-space-2); margin: 0 0 var(--byo-space-2);
+  color: var(--byo-ink-soft); font: var(--byo-text-3) var(--byo-font-mono);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.bubble-partial-label {
+  display: block; text-transform: uppercase; letter-spacing: var(--byo-track-wide);
+  font-weight: 700; color: var(--byo-accent-bad); margin-bottom: 2px;
+}
 #dock .card { box-shadow: var(--byo-shadow-row); padding: 10px var(--byo-space-2); }
 #dock .step { grid-template-columns: 46px 1fr; }
 #dock .step .time { grid-column: 2; text-align: left; }

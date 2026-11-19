@@ -1,5 +1,5 @@
 const state = { data: null, view: 'overview', live: null, map: null, mapError: false, window: '7d',
-  session: 'default', viewing: null, chatGen: 0, tools: null, memory: null };
+  session: 'default', viewing: null, handoffTurnId: null, chatGen: 0, tools: null, memory: null };
 
 const VIEW_HEADS = {
   overview: ['Overview', 'The runtime map, live.'],
@@ -66,6 +66,16 @@ function bubble(message) {
   const body = me
     ? '<div class="bubble-body">' + esc(message.content) + '</div>'
     : '<div class="bubble-body md">' + renderMarkdown(message.content) + '</div>';
+  // A failed/limited turn says so, and keeps the text that streamed before the failure.
+  const state = !me && message.state && message.state !== 'complete'
+    ? '<span class="chip' + (message.state === 'failed' ? ' bad' : '') + '" data-state="' +
+      esc(message.state) + '">' +
+      esc(message.state === 'limited' ? 'step limit' : message.state) + '</span>'
+    : '';
+  const partial = !me && message.partial
+    ? '<div class="bubble-partial"><span class="bubble-partial-label">partial output</span>' +
+      esc(message.partial) + '</div>'
+    : '';
   // Thinking and tool calls stay with the message, folded until asked for.
   const trace = !me && message.turn_id
     ? '<details class="trace" data-turn="' + esc(message.turn_id) + '">' +
@@ -76,8 +86,9 @@ function bubble(message) {
       '</details>'
     : '';
   return trace + '<div class="bubble' + (me ? ' me' : '') + '">' +
-    '<div class="bubble-meta">' + (me ? 'you' : 'byo') + ' · ' + esc(stamp(message.created_at)) + '</div>' +
-    body + '</div>';
+    '<div class="bubble-meta">' + (me ? 'you' : 'byo') + ' · ' + esc(stamp(message.created_at)) +
+    (state ? ' ' + state : '') + '</div>' +
+    partial + body + '</div>';
 }
 
 function loadTrace(details) {
@@ -109,6 +120,9 @@ function renderChat() {
   if (!history) return;
   const wanted = state.viewing || state.session;
   const generation = ++state.chatGen;
+  // Keep the live card in the dock while the history request runs; after it paints,
+  // reconcile once more so a session change is reflected immediately.
+  paintLive();
   return API.get('/api/session?action=history&session_id=' + encodeURIComponent(wanted))
     .then(function (payload) {
       if (state.chatGen !== generation) return;  // a newer load won
@@ -120,10 +134,15 @@ function renderChat() {
           ? messages.map(bubble).join('')
           : '<p class="empty">Say something in the composer to start.</p>');
       scrollChat();
+      if (state.handoffTurnId) {
+        clearLive(state.handoffTurnId);
+      }
+      paintLive();
     })
     .catch(function () {
       if (state.chatGen !== generation) return;
       history.innerHTML = '<p class="empty">History unavailable.</p>';
+      paintLive();
     });
 }
 
@@ -146,6 +165,11 @@ function renderSessionPicker(sessions) {
   const list = [{ session_id: state.session, messages: 0, last: '' }].concat(
     (sessions || []).filter(function (row) { return row.session_id !== state.session; })
   );
+  // The sending chat may not be in chat_log yet while its turn is still running.
+  const liveSession = state.live && state.live.session_id;
+  if (liveSession && !list.some(function (row) { return row.session_id === liveSession; })) {
+    list.push({ session_id: liveSession, messages: 0, last: '' });
+  }
   select.innerHTML = list.map(function (row) {
     const label = row.session_id + (row.messages ? ' · ' + row.messages : '');
     const current = (state.viewing || state.session) === row.session_id;
@@ -224,16 +248,40 @@ async function refreshMap(window) {
   if (viewName() === 'overview') render();
 }
 
-function newLive(message) {
+// Chat live turn — one session-scoped turn survives navigation.
+// Mechanism: state.live is bound to the session that sent it; navigation and session changes
+// leave it intact; clearLive(turnId) is the only writer that drops it, and only after the
+// transcript has painted.
+// Rejected alternatives: clearing on navigation (the reported bug — every later frame is
+// dropped), a separate chatlive.js store (no new seam needed for one lifetime rule), and
+// sessionStorage (a stale card after reload is worse than no card).
+
+function newLive(message, sessionId) {
   return {
+    session_id: sessionId,
     user_message: message,
     source: 'dashboard',
     state: 'live',
     items: [],
     reply: '',
     receipt: null,
-    turn_id: null
+    turn_id: null,
+    has_done: false,
+    started_at: new Date().toISOString()
   };
+}
+
+function clearLive(turnId) {
+  if (!state.live) {
+    state.handoffTurnId = null;
+    return;
+  }
+  if (turnId && state.live.turn_id !== turnId) {
+    state.handoffTurnId = null;
+    return;
+  }
+  state.live = null;
+  state.handoffTurnId = null;
 }
 
 function lastItem(live, type, openOnly) {
@@ -268,6 +316,20 @@ function settleRound(live, payload) {
     round.node = 'reply';
     if (round.body) live.reply = round.body;
   }
+}
+
+function noteFailure(live, message, stage) {
+  const item = lastItem(live, 'error', false);
+  if (item) {
+    item.body = message || item.body;
+    item.title = 'Failed · ' + (stage || 'turn');
+    item.live = false;
+    return item;
+  }
+  return addItem(live, {
+    type: 'error', node: LANE_NODE[stage] || '', title: 'Failed · ' + (stage || 'turn'),
+    body: message || 'failed', live: false, meta: ''
+  });
 }
 
 function closeLive(live) {
@@ -311,102 +373,148 @@ document.addEventListener('byo:lit', function (event) {
   paintLit((event.detail && event.detail.nodes) || []);
 });
 
+function liveVisible() {
+  const live = state.live;
+  if (!live) return false;
+  return live.session_id === (state.viewing || state.session);
+}
+
+function chatNoticeText() {
+  if (!state.live || liveVisible()) return '';
+  return state.live.state === 'live'
+    ? 'A turn is still running in another chat.'
+    : 'A turn has ended in another chat.';
+}
+
+function syncChatNotice() {
+  const notice = document.getElementById('chat-notice');
+  if (!notice) return;
+  const text = chatNoticeText();
+  if (notice.textContent !== text) notice.textContent = text;
+}
+
 function paintLive() {
   const live = document.getElementById('chat-live');
-  if (live) live.innerHTML = state.live ? liveCard(state.live) : '';
+  if (live) live.innerHTML = liveVisible() ? liveCard(state.live) : '';
   paintLit();
+  syncChatNotice();
 }
 
 async function send(message) {
+  if (state.live && state.live.state === 'live') return;
+  state.handoffTurnId = null;
   if (state.viewing && state.viewing !== state.session) {
     state.viewing = null;
     renderSessionPicker(state.data && state.data.sessions);
     renderChat();
   }
-  state.live = newLive(message);
+  state.live = newLive(message, state.session);
   paintLive();
   scrollChat();
   const onMap = typeof mapSetStatus === 'function' && document.getElementById('map-status');
   if (onMap) mapSetStatus('sending…');
-  await API.stream(message, function (kind, payload) {
-    if (!state.live) return;
-    if (kind === 'gate_start') {
-      addItem(state.live, {
-        type: 'gate', node: 'gate', title: 'Memory gate', body: '', pending: 'deciding…', live: true
-      });
-    } else if (kind === 'gate') {
-      const gate = lastItem(state.live, 'gate', false);
-      if (gate) {
-        gate.live = false;
-        gate.pending = '';
-        gate.title = 'Memory gate · ' + (payload.decision || '?');
-        gate.body = payload.reason || '';
-      }
-      state.live.gate = { decision: payload.decision, reason: payload.reason };
-    } else if (kind === 'llm_start') {
-      addItem(state.live, {
-        type: 'streaming', node: 'model', title: 'Thinking…', body: '', live: true,
-        iteration: payload.iteration, model: payload.model || ''
-      });
-    } else if (kind === 'text') {
-      const round = lastItem(state.live, 'streaming', true) || lastItem(state.live, 'streaming', false);
-      const delta = payload.delta || '';
-      if (round && delta) {
-        round.body += delta;
-        round.title = 'Output';
-      }
-    } else if (kind === 'llm') {
-      settleRound(state.live, payload);
-    } else if (kind === 'tool_start') {
-      addItem(state.live, {
-        type: 'tool', node: 'tools', title: 'Tool call · ' + (payload.tool || '?'),
-        body: '', pending: 'running…', live: true, name: payload.tool, call_id: payload.call_id
-      });
-    } else if (kind === 'tool') {
-      let tool = lastItem(state.live, 'tool', true);
-      if (!tool) {
-        tool = addItem(state.live, {
-          type: 'tool', node: 'tools', title: 'Tool call · ' + (payload.tool || '?'),
-          body: '', live: true, name: payload.tool
+  try {
+    await API.stream(message, function (kind, payload) {
+      // Frames belong to the turn, not to the destination that happens to be visible.
+      if (!state.live) return;
+      if (kind === 'gate_start') {
+        addItem(state.live, {
+          type: 'gate', node: 'gate', title: 'Memory gate', body: '', pending: 'deciding…', live: true
         });
+      } else if (kind === 'gate') {
+        const gate = lastItem(state.live, 'gate', false);
+        if (gate) {
+          gate.live = false;
+          gate.pending = '';
+          gate.title = 'Memory gate · ' + (payload.decision || '?');
+          gate.body = payload.reason || '';
+        }
+        state.live.gate = { decision: payload.decision, reason: payload.reason };
+      } else if (kind === 'llm_start') {
+        addItem(state.live, {
+          type: 'streaming', node: 'model', title: 'Thinking…', body: '', live: true,
+          iteration: payload.iteration, model: payload.model || ''
+        });
+      } else if (kind === 'text') {
+        const round = lastItem(state.live, 'streaming', true) || lastItem(state.live, 'streaming', false);
+        const delta = payload.delta || '';
+        if (round && delta) {
+          round.body += delta;
+          round.title = 'Output';
+        }
+      } else if (kind === 'llm') {
+        settleRound(state.live, payload);
+      } else if (kind === 'tool_start') {
+        addItem(state.live, {
+          type: 'tool', node: 'tools', title: 'Tool call · ' + (payload.tool || '?'),
+          body: '', pending: 'running…', live: true, name: payload.tool, call_id: payload.call_id
+        });
+      } else if (kind === 'tool') {
+        let tool = lastItem(state.live, 'tool', true);
+        if (!tool) {
+          tool = addItem(state.live, {
+            type: 'tool', node: 'tools', title: 'Tool call · ' + (payload.tool || '?'),
+            body: '', live: true, name: payload.tool
+          });
+        }
+        tool.live = false;
+        tool.pending = '';
+        tool.title = 'Tool call · ' + (payload.tool || 'tool') + (payload.ok === false ? ' · failed' : '');
+        tool.body = JSON.stringify(payload.args) + ' → ' + String(payload.output || '').slice(0, 160);
+        tool.meta = formatMs(payload.duration_ms);
+      } else if (kind === 'consolidation') {
+        addItem(state.live, {
+          type: 'output', node: 'consolidation', title: 'Memory written',
+          body: 'kept ' + (payload.new_facts || 0) + ' fact(s)', live: false, meta: ''
+        });
+      } else if (kind === 'error') {
+        const message = (payload.error && payload.error.message) || payload.message || 'failed';
+        const stage = payload.stage || 'turn';
+        noteFailure(state.live, message, stage);
+        state.live.state = 'failed';
+        if (onMap) mapSetStatus('failed: ' + message, 'bad');
+      } else if (kind === 'receipt') {
+        state.live.receipt = payload;
+      } else if (kind === 'done') {
+        state.live.has_done = true;
+        state.live.turn_id = payload.turn_id;
+        if (payload.failed) {
+          state.live.state = 'failed';
+          noteFailure(state.live, payload.reply || 'failed', 'turn');
+        } else {
+          state.live.reply = payload.reply || state.live.reply;
+          state.live.state = payload.limit_reached ? 'limited' : 'complete';
+        }
+        closeLive(state.live);
       }
-      tool.live = false;
-      tool.pending = '';
-      tool.title = 'Tool call · ' + (payload.tool || 'tool') + (payload.ok === false ? ' · failed' : '');
-      tool.body = JSON.stringify(payload.args) + ' → ' + String(payload.output || '').slice(0, 160);
-      tool.meta = formatMs(payload.duration_ms);
-    } else if (kind === 'consolidation') {
-      addItem(state.live, {
-        type: 'output', node: 'consolidation', title: 'Memory written',
-        body: 'kept ' + (payload.new_facts || 0) + ' fact(s)', live: false, meta: ''
-      });
-    } else if (kind === 'error') {
-      const message = (payload.error && payload.error.message) || payload.message || 'failed';
-      const stage = payload.stage || 'turn';
-      addItem(state.live, {
-        type: 'error', node: LANE_NODE[stage] || '', title: 'Failed · ' + stage,
-        body: message, live: false, meta: ''
-      });
+      paintLive();
+      scrollChat();
+    });
+  } catch (error) {
+    if (state.live && !state.live.has_done) {
       state.live.state = 'failed';
-      if (onMap) mapSetStatus('failed: ' + message, 'bad');
-    } else if (kind === 'receipt') {
-      state.live.receipt = payload;
-    } else if (kind === 'done') {
-      state.live.reply = payload.reply || state.live.reply;
-      state.live.state = 'complete';
-      state.live.turn_id = payload.turn_id;
+      noteFailure(state.live, (error && error.message) || 'stream failed', 'turn');
       closeLive(state.live);
+      paintLive();
     }
-    paintLive();
-    scrollChat();
-  });
+  }
   const finished = state.live;
+  if (finished) {
+    if (!finished.has_done) {
+      if (finished.state === 'live') finished.state = 'failed';
+      noteFailure(finished, 'The turn ended before the reply finished.', 'turn');
+      closeLive(finished);
+      paintLive();
+    } else {
+      state.handoffTurnId = finished.turn_id;
+    }
+  }
   // Let the transcript take the finished turn before the live card goes away: the
   // history must never blink out while a reply is arriving.
-  await refresh();
-  await renderChat();
-  if (state.live === finished) {
-    state.live = null;
+  try {
+    await refresh();
+  } catch (error) {
+    if (typeof console !== 'undefined') console.error(error);
     paintLive();
   }
   return finished;
@@ -476,11 +584,11 @@ async function send(message) {
       state.session = result.session_id;
       state.viewing = null;
       await refresh();
+      paintLive();
     }
   });
   document.getElementById('chat-sessions').addEventListener('change', function (event) {
     state.viewing = event.target.value;
-    state.live = null;
     paintLive();
     renderChat();
   });
@@ -509,14 +617,14 @@ document.getElementById('chat-form').addEventListener('submit', async function (
   const input = document.getElementById('chat-input');
   const message = input.value.trim();
   if (!message) return;
+  if (state.live && state.live.state === 'live') return;
   input.value = '';
   input.style.height = '';   // fall back to the two-line min-height, never one clipped line
   await send(message);
 });
 
 window.addEventListener('hashchange', function () {
-  state.live = null;
-  paintLive();
+  // A destination change is navigation, not a transition of the live turn.
   if (typeof MapLive !== 'undefined') MapLive.stop();
   if (typeof resetMemoryUi === 'function') resetMemoryUi();
   if (viewName() === 'overview' && state.data && !state.map) {

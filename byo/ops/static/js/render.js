@@ -392,7 +392,12 @@ function liveLane(item) {
 function liveCard(live) {
   const lanes = (live.items || []).map(liveLane).join('');
   const receipt = live.receipt ? '<div class="receipt">' + receiptLine(live.receipt) + '</div>' : '';
-  const state = live.state === 'failed' ? ' <span class="chip bad" data-state="failed">failed</span>' : '';
+  let state = '';
+  if (live.state === 'failed') {
+    state = ' <span class="chip bad" data-state="failed">failed</span>';
+  } else if (live.state === 'limited') {
+    state = ' <span class="chip" data-state="limited">step limit</span>';
+  }
   return '<article class="card live-card">' +
     '<div class="meta"><span>live</span><span>' + esc(live.source || 'dashboard') + '</span>' + state + '</div>' +
     '<div class="reply"><strong>you ›</strong> ' + esc(live.user_message) + '</div>' +
