@@ -1,5 +1,5 @@
 const state = { data: null, view: 'overview', live: null, map: null, mapError: false, window: '7d',
-  session: 'default', viewing: null, chatGen: 0, tools: null };
+  session: 'default', viewing: null, chatGen: 0, tools: null, memory: null };
 
 const VIEW_HEADS = {
   overview: ['Overview', 'The runtime map, live.'],
@@ -37,7 +37,10 @@ function render() {
   if (typeof MapLive !== 'undefined') MapLive.stop();
   if (name === 'observe') { setHead('observe'); view.innerHTML = observeView(data); }
   else if (name === 'tools') { setHead('tools'); view.innerHTML = toolsView(state.tools); }
-  else if (name === 'memory') { setHead('memory'); view.innerHTML = memoryView(data); }
+  else if (name === 'memory') {
+    setHead('memory');
+    view.innerHTML = memoryView(state.memory || (data && data.memory));
+  }
   else if (name === 'settings') { setHead('settings'); view.innerHTML = settingsView(data); }
   else { setHead('overview'); location.hash = '#overview'; renderOverview(); }
   renderChat();
@@ -151,6 +154,13 @@ async function refresh() {
       state.tools = await API.get('/api/tools');
     } catch (error) {
       state.tools = { tools: [], results: [] };
+    }
+  }
+  if (viewName() === 'memory') {
+    try {
+      state.memory = await API.get('/api/memory');
+    } catch (error) {
+      state.memory = state.data ? state.data.memory : null;
     }
   }
   render();
@@ -457,9 +467,13 @@ window.addEventListener('hashchange', function () {
   state.live = null;
   paintLive();
   if (typeof MapLive !== 'undefined') MapLive.stop();
+  if (typeof resetMemoryUi === 'function') resetMemoryUi();
   if (viewName() === 'overview' && state.data && !state.map) {
     refreshMap(state.window).catch(function () { render(); });
+  } else if (viewName() === 'memory') {
+    refresh().catch(function () { render(); });
   } else {
+    state.memory = null;
     render();
   }
 });

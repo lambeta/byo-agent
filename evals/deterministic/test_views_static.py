@@ -70,3 +70,69 @@ def test_nav_has_a_link_for_every_routed_view():
     linked = set(re.findall(r'data-view="(\w+)"', shell))
     for view in sorted(heads):
         assert view in linked, f'no nav link data-view="{view}"'
+
+
+def test_memory_facts_edit_in_place_is_wired():
+    dock = read("js/dock.js")
+    for needle in (
+        "MEMORY_UI",
+        "startEditFact",
+        "saveEditFact",
+        "cancelEditFact",
+        "edit-subject-",
+        "edit-content-",
+        "baseline_subject",
+        "baseline_content",
+        "aria-invalid",
+        "aria-describedby",
+        'role="alert"',
+        "fact-body",
+        "esc(draft.subject)",
+        "esc(draft.content)",
+        "esc(fact.subject)",
+        "esc(fact.content)",
+    ):
+        assert needle in dock, needle
+    assert "window.prompt" not in dock
+    assert "alert(" not in dock
+    assert "contenteditable" not in dock
+    assert "existingId" in dock
+    assert "edit fact " in dock
+
+
+def test_memory_add_form_is_server_authoritative():
+    dock = read("js/dock.js")
+    assert "novalidate" in dock
+    assert 'id="fact-subject"' in dock
+    assert 'textarea id="fact-content"' in dock
+    assert "maxlength" not in dock
+    assert "required" not in dock
+    assert "subject.value" in dock and "content.value" in dock
+    assert "action: 'add'" in dock
+
+
+def test_memory_view_gets_its_own_full_payload():
+    main = read("js/main.js")
+    assert "API.get('/api/memory')" in main
+    assert "memoryView(state.memory" in main
+    assert "resetMemoryUi" in main
+
+
+def test_memory_content_keeps_line_breaks_literally():
+    css = read("style.css")
+    assert ".fact-body" in css
+    assert "pre-wrap" in css
+
+
+def test_memory_labels_and_empty_states_survive():
+    dock = read("js/dock.js")
+    for label in (
+        "nothing remembered yet",
+        "no episodes yet",
+        "forget",
+        "subject",
+        "source",
+        "when",
+        "what",
+    ):
+        assert label in dock, label

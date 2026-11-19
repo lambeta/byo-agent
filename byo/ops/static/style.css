@@ -73,7 +73,7 @@ body {
 .mono { font-family: var(--byo-font-mono); }
 
 /* Focus: a double ring — the accent outline over the element's own contour. */
-a:focus-visible, button:focus-visible, input:focus-visible,
+a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible,
 summary:focus-visible, [tabindex]:focus-visible, .map-node:focus-visible {
   outline: var(--byo-contour-w-strong) solid var(--byo-accent-live);
   outline-offset: 2px;
@@ -307,6 +307,38 @@ label {
   display: block; color: var(--byo-ink-soft); font-size: var(--byo-text-3);
   font-weight: 700; text-transform: uppercase; letter-spacing: var(--byo-track-wide);
   margin: var(--byo-space-2) 0 4px;
+}
+textarea {
+  width: 100%; min-height: 74px; padding: 9px 11px;
+  font: var(--byo-text-1) var(--byo-font-body);
+  border: var(--byo-contour-w) solid var(--byo-ink); border-radius: var(--byo-radius);
+  background: var(--byo-field); color: var(--byo-ink); resize: vertical;
+}
+
+/* --- Facts: add and edit in place ----------------------------------------- */
+.fact-form { display: grid; gap: var(--byo-space-1); margin-bottom: var(--byo-space-3); }
+.fact-field { display: block; }
+.fact-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.fact-actions { display: flex; gap: var(--byo-space-1); align-items: flex-start; flex-wrap: wrap; }
+.fact-editing td { background: var(--byo-panel-raised); }
+.field-error {
+  margin: 4px 0 0; color: var(--byo-accent-bad);
+  font: 700 var(--byo-text-3) var(--byo-font-mono); overflow-wrap: anywhere;
+}
+.fact-error, .fact-warning, .fact-notice {
+  margin: 0 0 var(--byo-space-2); padding: 8px var(--byo-space-2);
+  border: var(--byo-contour-w) solid var(--byo-ink); border-radius: var(--byo-radius);
+  font: 700 var(--byo-text-3) var(--byo-font-mono); text-transform: uppercase;
+  letter-spacing: var(--byo-track-wide);
+}
+.fact-notice { background: var(--byo-accent-ok); color: var(--byo-ink-on-accent); }
+.fact-warning { background: var(--byo-accent-warn); color: var(--byo-ink-on-accent); }
+.fact-error { background: var(--byo-accent-bad); color: var(--byo-ink-on-accent); }
+input[aria-invalid="true"], textarea[aria-invalid="true"] {
+  border-color: var(--byo-accent-bad); box-shadow: var(--byo-shadow-row);
+}
+button[disabled], button[disabled]:hover, button[disabled]:active {
+  opacity: 0.55; cursor: not-allowed; box-shadow: none; transform: none;
 }
 .empty {
   color: var(--byo-ink-soft); font-style: italic;

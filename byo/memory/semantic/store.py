@@ -64,6 +64,33 @@ class FactStore:
             for row in self.conn.execute("SELECT * FROM facts ORDER BY id DESC LIMIT ?", (limit,))
         ]
 
+    def all(self) -> list[dict[str, Any]]:
+        """Every fact, newest first. Used by the view's duplicate check and payload."""
+        return [
+            dict(row) for row in self.conn.execute("SELECT * FROM facts ORDER BY id DESC")
+        ]
+
+    def update_if_unchanged(
+        self,
+        fact_id: int,
+        subject: str,
+        content: str,
+        baseline_subject: str,
+        baseline_content: str,
+    ) -> bool:
+        """Write only when the stored values still match what the editor saw.
+
+        The UPDATE carries the baseline in its WHERE clause, so a writer that slips in
+        between the read and the write cannot be overwritten by an older edit.
+        """
+        cursor = self.conn.execute(
+            "UPDATE facts SET subject = ?, content = ? "
+            "WHERE id = ? AND subject = ? AND content = ?",
+            (subject, content, fact_id, baseline_subject, baseline_content),
+        )
+        self.conn.commit()
+        return cursor.rowcount == 1
+
     def count(self) -> int:
         return int(self.conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0])
 

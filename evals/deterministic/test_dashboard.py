@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import threading
+import time
+import urllib.error
 import urllib.request
 
 import pytest
@@ -11,6 +13,7 @@ from scripted import script, text, tool_call
 
 from byo.app import Agent
 from byo.ops.dashboard import make_server
+from byo.ops.observability import read_events
 
 
 @pytest.fixture
@@ -42,6 +45,19 @@ def call(server, path, payload=None):
     )
     with urllib.request.urlopen(request) as response:
         return response.read()
+
+
+def status_call(server, path, payload=None):
+    """Return (status, parsed body) for a call that may legitimately fail."""
+    try:
+        return 200, json.loads(call(server, path, payload))
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read())
+
+
+def memory_changes(settings):
+    events, _ = read_events(settings.home, "all")
+    return [event for event in events if event.get("type") == "memory_change"]
 
 
 def test_a_client_disconnect_does_not_cancel_the_turn(settings):
@@ -334,3 +350,443 @@ def test_cli_and_dashboard_record_the_same_turn_shape(settings):
     assert turn_kinds(settings, cli_id) == turn_kinds(settings, dash_id)
     assert "gate" in turn_kinds(settings, cli_id)
     assert "tool" in turn_kinds(settings, cli_id)
+
+
+# --- spec 007: facts add and edit -----------------------------------------
+#
+# These drive the real handler and the real store. The view's rendering rules
+# live in test_views_static.py; here the contract, status, record and mirror.
+
+
+def test_memory_payload_has_counts_created_at_and_warnings(settings):
+    srv = make_memory_server(settings)
+    try:
+        empty = json.loads(call(srv, "/api/memory"))
+        assert empty["facts"] == []
+        assert empty["counts"] == {"facts": 0, "episodes": 0}
+        assert empty["warnings"] == []
+        assert empty["mirror_path"].endswith("MEMORY.md")
+
+        added = json.loads(
+            call(
+                srv,
+                "/api/memory",
+                {"action": "add", "subject": "tea", "content": "green over black"},
+            )
+        )
+        assert added["ok"] is True
+        assert added["fact"]["source"] == "user"
+        assert added["fact"]["created_at"]
+        assert added["memory"]["counts"]["facts"] == 1
+        payload = json.loads(call(srv, "/api/memory"))
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert payload["facts"][0]["created_at"] == added["fact"]["created_at"]
+    assert payload["counts"]["facts"] == 1
+    assert payload["warnings"] == []
+
+
+def test_add_accepts_multiline_content_and_normalizes_subject(settings):
+    srv = make_memory_server(settings)
+    try:
+        status, payload = status_call(
+            srv,
+            "/api/memory",
+            {
+                "action": "add",
+                "subject": "tea\nmorning",
+                "content": "line one\nline two",
+            },
+        )
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert status == 200
+    assert payload["fact"]["subject"] == "tea morning"
+    assert payload["fact"]["content"] == "line one\nline two"
+
+
+def test_add_refuses_empty_fields_with_a_field_and_records_each_attempt(settings):
+    srv = make_memory_server(settings)
+    try:
+        first_status, first = status_call(
+            srv, "/api/memory", {"action": "add", "subject": "  ", "content": "x"}
+        )
+        second_status, second = status_call(
+            srv, "/api/memory", {"action": "add", "subject": "x", "content": "\n  "}
+        )
+        stored = srv.dashboard.agent.memory.facts.count()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert first_status == 400 and second_status == 400
+    assert first["error"]["code"] == "fact_validation"
+    assert first["error"]["field"] == "subject"
+    assert second["error"]["field"] == "content"
+    assert stored == 0
+    changes = memory_changes(settings)
+    assert len(changes) == 2
+    assert all(change["outcome"] == "refused" for change in changes)
+
+
+def test_add_limits_are_inclusive_and_enforced(settings):
+    srv = make_memory_server(settings)
+    try:
+        accepted = json.loads(
+            call(
+                srv,
+                "/api/memory",
+                {"action": "add", "subject": "s" * 120, "content": "c" * 2000},
+            )
+        )
+        subject_status, subject_error = status_call(
+            srv,
+            "/api/memory",
+            {"action": "add", "subject": "s" * 121, "content": "other content"},
+        )
+        content_status, content_error = status_call(
+            srv,
+            "/api/memory",
+            {"action": "add", "subject": "other subject", "content": "c" * 2001},
+        )
+        count = srv.dashboard.agent.memory.facts.count()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert accepted["fact"]["subject"] == "s" * 120
+    assert accepted["fact"]["content"] == "c" * 2000
+    assert subject_status == 400 and subject_error["error"]["field"] == "subject"
+    assert "120" in subject_error["error"]["message"]
+    assert content_status == 400 and content_error["error"]["field"] == "content"
+    assert "2000" in content_error["error"]["message"]
+    assert count == 1
+
+
+def test_add_duplicate_is_refused_with_the_existing_fact(settings):
+    srv = make_memory_server(settings)
+    try:
+        first = json.loads(
+            call(
+                srv,
+                "/api/memory",
+                {"action": "add", "subject": "Tea", "content": "Green  Over Black"},
+            )
+        )
+        status, duplicate = status_call(
+            srv,
+            "/api/memory",
+            {"action": "add", "subject": " tea ", "content": "green over\nblack"},
+        )
+        count = srv.dashboard.agent.memory.facts.count()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert status == 400
+    assert duplicate["error"]["code"] == "fact_duplicate"
+    assert duplicate["error"]["existing_id"] == first["fact"]["id"]
+    assert count == 1
+
+
+def test_edit_preserves_identity_origin_and_creation_time(settings):
+    srv = make_memory_server(settings)
+    try:
+        added = json.loads(
+            call(
+                srv,
+                "/api/memory",
+                {"action": "add", "subject": "tea", "content": "green over black"},
+            )
+        )
+        fact = added["fact"]
+        status, edited = status_call(
+            srv,
+            "/api/memory",
+            {
+                "action": "edit",
+                "id": fact["id"],
+                "subject": "Tea (morning)",
+                "content": fact["content"],
+                "baseline_subject": fact["subject"],
+                "baseline_content": fact["content"],
+            },
+        )
+        row = dict(
+            srv.dashboard.agent.conn.execute(
+                "SELECT id, subject, content, source, created_at FROM facts WHERE id = ?",
+                (fact["id"],),
+            ).fetchone()
+        )
+        mirror = srv.dashboard.agent.settings.mirror_path.read_text(encoding="utf-8")
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert status == 200
+    assert edited["fact"]["id"] == fact["id"]
+    assert edited["fact"]["subject"] == "Tea (morning)"
+    assert row["source"] == fact["source"]
+    assert row["created_at"] == fact["created_at"]
+    assert "Tea (morning)" in mirror
+
+
+def test_edit_with_a_stale_baseline_is_a_conflict(settings):
+    srv = make_memory_server(settings)
+    try:
+        seed_fact(srv.dashboard.agent, "tea", "green over black")
+        fact_id = srv.dashboard.agent.conn.execute(
+            "SELECT id FROM facts"
+        ).fetchone()[0]
+        status, payload = status_call(
+            srv,
+            "/api/memory",
+            {
+                "action": "edit",
+                "id": fact_id,
+                "subject": "tea",
+                "content": "black over green",
+                "baseline_subject": "tea",
+                "baseline_content": "something else",
+            },
+        )
+        stored = srv.dashboard.agent.memory.facts.get(fact_id)
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert status == 409
+    assert payload["error"]["code"] == "fact_conflict"
+    assert stored["content"] == "green over black"
+
+
+def test_edit_of_a_missing_fact_is_404_and_creates_nothing(settings):
+    srv = make_memory_server(settings)
+    try:
+        status, payload = status_call(
+            srv,
+            "/api/memory",
+            {"action": "edit", "id": 99, "subject": "tea", "content": "black"},
+        )
+        count = srv.dashboard.agent.memory.facts.count()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert status == 404
+    assert payload["error"]["code"] == "fact_not_found"
+    assert count == 0
+
+
+def test_edit_onto_another_fact_duplicate_is_refused(settings):
+    srv = make_memory_server(settings)
+    try:
+        seed_fact(srv.dashboard.agent, "tea", "green over black")
+        seed_fact(srv.dashboard.agent, "coffee", "black")
+        rows = [
+            dict(row)
+            for row in srv.dashboard.agent.conn.execute(
+                "SELECT id, subject, content FROM facts ORDER BY id"
+            )
+        ]
+        status, payload = status_call(
+            srv,
+            "/api/memory",
+            {
+                "action": "edit",
+                "id": rows[1]["id"],
+                "subject": "tea",
+                "content": "GREEN over black",
+            },
+        )
+        stored = srv.dashboard.agent.memory.facts.get(rows[1]["id"])
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert status == 400
+    assert payload["error"]["code"] == "fact_duplicate"
+    assert payload["error"]["existing_id"] == rows[0]["id"]
+    assert stored["subject"] == "coffee"
+
+
+def test_mirror_failure_warns_and_repairs_on_the_next_memory_read(settings, monkeypatch):
+    srv = make_memory_server(settings)
+    memory = srv.dashboard.agent.memory
+    original = memory.rewrite_mirror
+    calls = {"count": 0}
+
+    def flaky():
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise OSError("disk full")
+        return original()
+
+    monkeypatch.setattr(memory, "rewrite_mirror", flaky)
+    try:
+        status, added = status_call(
+            srv,
+            "/api/memory",
+            {"action": "add", "subject": "tea", "content": "green over black"},
+        )
+        assert status == 200
+        assert any(item["code"] == "mirror_write_failed" for item in added["warnings"])
+        assert srv.dashboard._mirror_pending()
+        assert srv.dashboard.agent.memory.facts.count() == 1
+
+        repaired = json.loads(call(srv, "/api/memory"))
+        mirror = srv.dashboard.agent.settings.mirror_path.read_text(encoding="utf-8")
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert repaired["warnings"] == []
+    assert not srv.dashboard._mirror_pending()
+    assert "green over black" in mirror
+
+
+def test_each_add_and_edit_attempt_records_exactly_one_event(settings):
+    srv = make_memory_server(settings)
+    try:
+        added = json.loads(
+            call(
+                srv,
+                "/api/memory",
+                {"action": "add", "subject": "tea", "content": "green over black"},
+            )
+        )
+        status_call(
+            srv,
+            "/api/memory",
+            {"action": "add", "subject": "tea", "content": "green over black"},
+        )
+        status_call(
+            srv,
+            "/api/memory",
+            {
+                "action": "edit",
+                "id": added["fact"]["id"],
+                "subject": "tea",
+                "content": "black over green",
+                "baseline_subject": "stale",
+                "baseline_content": "stale",
+            },
+        )
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    changes = memory_changes(settings)
+    assert len(changes) == 3
+    assert [change["outcome"] for change in changes] == ["ok", "refused", "refused"]
+    assert changes[0]["action"] == "add"
+    assert changes[0]["fact_id"] == added["fact"]["id"]
+    assert changes[1]["code"] == "fact_duplicate"
+    assert changes[2]["code"] == "fact_conflict"
+    for change in changes:
+        assert "subject" not in change
+        assert "content" not in change
+        assert change["turn_id"] == ""
+        assert change["source"] == "dashboard"
+
+
+def test_events_endpoint_exposes_the_activity_record(settings):
+    srv = make_memory_server(settings)
+    try:
+        call(
+            srv,
+            "/api/memory",
+            {"action": "add", "subject": "tea", "content": "green over black"},
+        )
+        payload = json.loads(call(srv, "/api/events?cursor=0"))
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    changes = [event for event in payload["events"] if event["type"] == "memory_change"]
+    assert len(changes) == 1
+    assert changes[0]["outcome"] == "ok"
+
+
+def test_memory_view_handles_five_hundred_facts_within_the_budget(settings):
+    srv = make_memory_server(settings)
+    try:
+        conn = srv.dashboard.agent.conn
+        conn.executemany(
+            "INSERT INTO facts (subject, content, source) VALUES (?, ?, 'user')",
+            [(f"subject {index}", f"content number {index}") for index in range(499)],
+        )
+        conn.commit()
+
+        started = time.monotonic()
+        add_status, added = status_call(
+            srv,
+            "/api/memory",
+            {"action": "add", "subject": "newest", "content": "new content"},
+        )
+        add_elapsed = time.monotonic() - started
+
+        started = time.monotonic()
+        payload = json.loads(call(srv, "/api/memory"))
+        read_elapsed = time.monotonic() - started
+
+        fact = added["fact"]
+        started = time.monotonic()
+        edit_status, edited = status_call(
+            srv,
+            "/api/memory",
+            {
+                "action": "edit",
+                "id": fact["id"],
+                "subject": "newest edited",
+                "content": fact["content"],
+                "baseline_subject": fact["subject"],
+                "baseline_content": fact["content"],
+            },
+        )
+        edit_elapsed = time.monotonic() - started
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert add_status == 200 and edit_status == 200
+    assert edited["fact"]["subject"] == "newest edited"
+    assert len(payload["facts"]) == 500
+    assert payload["facts"][0]["id"] == fact["id"]
+    assert payload["counts"]["facts"] == 500
+    assert add_elapsed < 2.0
+    assert read_elapsed < 2.0
+    assert edit_elapsed < 2.0
+
+
+def test_data_endpoint_keeps_its_bounded_memory_slice(settings):
+    srv = make_memory_server(settings)
+    try:
+        conn = srv.dashboard.agent.conn
+        conn.executemany(
+            "INSERT INTO facts (subject, content, source) VALUES (?, ?, 'user')",
+            [(f"subject {index}", f"content {index}") for index in range(150)],
+        )
+        conn.commit()
+        payload = json.loads(call(srv, "/api/data"))
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert len(payload["memory"]["facts"]) == 100
+    assert payload["memory"]["counts"]["facts"] == 100
+
+
+def test_unexpected_storage_failure_is_explicit_and_recorded(settings, monkeypatch):
+    srv = make_memory_server(settings)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr("byo.ops.dashboard.curation.add", boom)
+    try:
+        status, payload = status_call(
+            srv,
+            "/api/memory",
+            {"action": "add", "subject": "tea", "content": "green over black"},
+        )
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert status == 500
+    assert payload["error"]["code"] == "fact_failed"
+    assert "database is locked" not in payload["error"]["message"]
+    changes = memory_changes(settings)
+    assert len(changes) == 1
+    assert changes[0]["outcome"] == "failed"
+    assert changes[0]["code"] == "fact_failed"

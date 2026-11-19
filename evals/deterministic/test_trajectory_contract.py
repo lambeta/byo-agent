@@ -8,6 +8,7 @@ from scripted import script, text, tool_call
 
 from byo.app import Agent
 from byo.ops.observability import build_turn, group_turns, read_events
+from byo.ops.trajectory import Trajectory
 
 
 def run_one(settings, *responses):
@@ -44,6 +45,46 @@ def test_tool_record_carries_args_output_and_duration(settings):
     assert tool["args"] == {"start": "2026-11-20"}
     assert tool["ok"] is True
     assert isinstance(tool["duration_ms"], int)
+
+
+def test_activity_record_is_turn_less_redacted_and_ignored_as_a_step(settings):
+    sink = Trajectory(settings)
+    sink.start("a turn", source="cli")
+    turn_id = sink.turn_id
+    sink.end("ok", 1)
+
+    event = sink.record_activity(
+        "memory_change",
+        action="add",
+        outcome="ok",
+        fact_id=3,
+        code=None,
+        field=None,
+        warning=None,
+        detail="sk-ant-abcdefgh12345678",
+    )
+
+    assert event["turn_id"] == ""
+    assert event["source"] == "dashboard"
+    assert sink.turn_id == turn_id
+    assert "sk-ant-" not in event["detail"]
+    assert "[redacted]" in event["detail"]
+
+    events, skipped = read_events(settings.home, "all")
+    assert skipped == 0
+    changes = [record for record in events if record["type"] == "memory_change"]
+    assert len(changes) == 1
+    turns = group_turns(events)
+    assert len(turns) == 1
+    assert all(step["kind"] != "memory_change" for step in build_turn(turns[0])["steps"])
+
+
+def test_activity_record_before_any_turn_does_not_mint_a_turn(settings):
+    sink = Trajectory(settings)
+    sink.record_activity("memory_change", action="edit", outcome="refused", code="fact_conflict")
+    events, _ = read_events(settings.home, "all")
+    assert [record["type"] for record in events] == ["memory_change"]
+    assert group_turns(events) == []
 
 
 def test_unfinished_turn_does_not_swallow_the_next_one(settings):

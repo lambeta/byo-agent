@@ -101,9 +101,33 @@ class Trajectory:
             "turn_id": self.turn_id,
         }
         event.update(fields)
+        return self._append(event)
+
+    def record_activity(self, event_type: str, **fields: Any) -> dict[str, Any]:
+        """Append a record that belongs to no turn, such as a Memory-view fact change.
+
+        The event is turn-less on purpose: reusing the last turn id would make an admin
+        change look like part of that turn and would pollute CLI/dashboard parity. The
+        same redacting sink is used, and readers that group turns ignore this record
+        because it never sits between turn_start and turn_end.
+
+        Rejected alternative: a separate activity log. It would be a second source with
+        its own reader, and the feed would have to know about both files.
+        """
+        event: dict[str, Any] = {
+            "type": event_type,
+            "ts": self.now().isoformat(timespec="milliseconds"),
+            "turn_id": "",
+            "source": "dashboard",
+        }
+        event.update(fields)
+        return self._append(event)
+
+    def _append(self, event: dict[str, Any]) -> dict[str, Any]:
         event = redact(event)
         line = json.dumps(event, ensure_ascii=False, default=str)
         self.events.append(event)
+        self.settings.trajectories_dir.mkdir(parents=True, exist_ok=True)
         with self._lock, self.path_for().open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
         return event

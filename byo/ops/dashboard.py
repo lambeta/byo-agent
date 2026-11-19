@@ -19,6 +19,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from byo.app import Agent
 from byo.config import Settings, load_settings, missing_key_message
+from byo.memory import curation
+from byo.memory.semantic.store import FactStore
 from byo.ops import feed as feed_mod
 from byo.ops import highlight, observability, turn_detail
 from byo.ops import map as map_ops
@@ -35,6 +37,22 @@ CONTENT_TYPES = {
 }
 MAX_BODY = 1024 * 1024
 WINDOWS = ("today", "7d", "all")
+FACTS_LIMIT = 500
+MEMORY_STATUS = {
+    "bad_request": 400,
+    "fact_validation": 400,
+    "fact_duplicate": 400,
+    "fact_not_found": 404,
+    "fact_conflict": 409,
+    "fact_failed": 500,
+}
+
+
+def _int_or_none(value) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _window(query: dict) -> str:
@@ -49,6 +67,7 @@ class Dashboard:
         self.settings = settings
         self.agent = agent or Agent(settings)
         self.lock = threading.Lock()
+        self.memory_lock = threading.Lock()
         self.feed = feed_mod.Feed("7d")
 
     # ---- payloads ---------------------------------------------------
@@ -203,11 +222,28 @@ class Dashboard:
         ).fetchall()
         return {"session_id": session_id, "messages": [dict(row) for row in rows]}
 
-    def memory(self) -> dict:
+    def memory(self, repair: bool = True) -> dict:
+        """The Memory view payload: facts, episodes, counts, warnings and status.
+
+        A pending mirror marker is repaired once before the payload is built, so a
+        refresh after a mirror failure converges without rewriting files on every read.
+        """
         conn = self.agent.conn
+        if self._mirror_pending():
+            warnings = (
+                self._repair_mirror()
+                if repair and self.agent.memory is not None
+                else [self._mirror_warning()]
+            )
+        else:
+            warnings = []
         facts = [
             dict(r)
-            for r in conn.execute("SELECT id, subject, content, source FROM facts ORDER BY id DESC")
+            for r in conn.execute(
+                "SELECT id, subject, content, source, created_at FROM facts "
+                "ORDER BY id DESC LIMIT ?",
+                (FACTS_LIMIT,),
+            )
         ]
         episodes = [
             dict(r)
@@ -216,10 +252,92 @@ class Dashboard:
         return {
             "facts": facts,
             "episodes": episodes,
+            "counts": {"facts": len(facts), "episodes": len(episodes)},
             "mirror_path": str(self.settings.mirror_path),
             "gate": self._gate_status(),
             "consolidation": self._consolidation_status(conn),
+            "warnings": warnings,
         }
+
+    def _mirror_marker(self) -> Path:
+        """A durable note that the readable mirror is behind the store."""
+        return self.settings.home / ".mirror-pending"
+
+    def _mirror_pending(self) -> bool:
+        return self._mirror_marker().exists()
+
+    @staticmethod
+    def _mirror_warning() -> dict:
+        return {
+            "code": "mirror_write_failed",
+            "message": (
+                "The readable mirror is stale; it will be retried on the next Memory "
+                "refresh."
+            ),
+        }
+
+    def _rewrite_mirror_or_warn(self) -> list[dict]:
+        """Regenerate the mirror; a failure is a warning, never a lost fact."""
+        if self.agent.memory is None:
+            return []
+        try:
+            self.agent.memory.rewrite_mirror()
+        except Exception:  # noqa: BLE001 - a mirror failure must not undo the store write
+            marker = self._mirror_marker()
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text("mirror rewrite failed\n", encoding="utf-8")
+            return [self._mirror_warning()]
+        self._mirror_marker().unlink(missing_ok=True)
+        return []
+
+    def _repair_mirror(self) -> list[dict]:
+        """One retry for a pending mirror; keeps the marker when it fails again."""
+        if self.agent.memory is None:
+            return []
+        try:
+            self.agent.memory.rewrite_mirror()
+        except Exception:  # noqa: BLE001 - keep serving the store and the warning
+            return [self._mirror_warning()]
+        self._mirror_marker().unlink(missing_ok=True)
+        return []
+
+    def _record_change(
+        self,
+        action: str,
+        outcome: str,
+        fact_id: int | None = None,
+        code: str | None = None,
+        field: str | None = None,
+        warning: str | None = None,
+    ) -> dict | None:
+        """Append exactly one memory_change record; never fail the change for it."""
+        try:
+            self.agent.trajectory.record_activity(
+                "memory_change",
+                action=action,
+                outcome=outcome,
+                fact_id=fact_id,
+                code=code,
+                field=field,
+                warning=warning,
+            )
+        except Exception:  # noqa: BLE001 - the fact change is already committed
+            return {
+                "code": "trace_write_failed",
+                "message": (
+                    "The change was saved, but the activity record could not be written."
+                ),
+            }
+        return None
+
+    @staticmethod
+    def _refusal(exc: curation.Refused) -> dict:
+        error: dict = {"code": exc.code, "message": exc.message}
+        if exc.field:
+            error["field"] = exc.field
+        if exc.existing_id is not None:
+            error["existing_id"] = int(exc.existing_id)
+        return {"error": error}
 
     def _gate_status(self) -> dict:
         """Retrieve/skip counts from the recorded trajectory, plus the last call."""
@@ -245,32 +363,92 @@ class Dashboard:
         }
 
     def memory_action(self, payload: dict) -> dict:
+        """Apply one Memory-view change: explicit outcome, mirror attempt, one record."""
         action = payload.get("action")
-        conn = self.agent.conn
-        if action == "add":
-            conn.execute(
-                "INSERT INTO facts (subject, content, source) VALUES (?, ?, 'user')",
-                (str(payload.get("subject", "")).strip(), str(payload.get("content", "")).strip()),
-            )
-        elif action == "edit":
-            conn.execute(
-                "UPDATE facts SET subject = ?, content = ? WHERE id = ?",
-                (
-                    str(payload.get("subject", "")).strip(),
-                    str(payload.get("content", "")).strip(),
-                    int(payload.get("id", 0)),
-                ),
-            )
-        elif action == "forget":
-            conn.execute("DELETE FROM facts WHERE id = ?", (int(payload.get("id", 0)),))
-        else:
+        if action not in ("add", "edit", "forget"):
             return {
                 "error": {"code": "bad_request", "message": "action must be add, edit or forget"}
             }
-        conn.commit()
-        if self.agent.memory is not None:
-            self.agent.memory.rewrite_mirror()
-        return {"ok": True, "memory": self.memory()}
+        if action == "forget":
+            with self.memory_lock:
+                self.agent.conn.execute(
+                    "DELETE FROM facts WHERE id = ?", (int(payload.get("id", 0)),)
+                )
+                self.agent.conn.commit()
+                warnings = self._rewrite_mirror_or_warn()
+            return {
+                "ok": True,
+                "memory": self.memory(repair=False),
+                "warnings": warnings,
+            }
+        store = (
+            self.agent.memory.facts
+            if self.agent.memory is not None
+            else FactStore(self.agent.conn)
+        )
+        fact_id = _int_or_none(payload.get("id")) if action == "edit" else None
+        baseline_subject = baseline_content = None
+        if (
+            action == "edit"
+            and "baseline_subject" in payload
+            and "baseline_content" in payload
+        ):
+            baseline_subject = str(payload.get("baseline_subject") or "")
+            baseline_content = str(payload.get("baseline_content") or "")
+
+        with self.memory_lock:
+            try:
+                if action == "add":
+                    fact = curation.add(
+                        store,
+                        payload.get("subject", ""),
+                        payload.get("content", ""),
+                    )
+                elif fact_id is None:
+                    raise curation.Refused("fact_not_found", "No fact with that id.")
+                else:
+                    fact = curation.edit(
+                        store,
+                        fact_id,
+                        payload.get("subject", ""),
+                        payload.get("content", ""),
+                        baseline_subject,
+                        baseline_content,
+                    )
+            except curation.Refused as exc:
+                self._record_change(
+                    action,
+                    "refused",
+                    fact_id=fact_id,
+                    code=exc.code,
+                    field=exc.field,
+                )
+                return self._refusal(exc)
+            except Exception:  # noqa: BLE001 - never echo storage errors or fact content
+                self._record_change(action, "failed", fact_id=fact_id, code="fact_failed")
+                return {
+                    "error": {
+                        "code": "fact_failed",
+                        "message": "The fact could not be saved.",
+                    }
+                }
+            warnings = self._rewrite_mirror_or_warn()
+            trace_warning = self._record_change(
+                action,
+                "ok",
+                fact_id=fact["id"],
+                warning="mirror_write_failed" if warnings else None,
+            )
+            memory = self.memory(repair=False)
+            if trace_warning:
+                warnings = [*warnings, trace_warning]
+                memory["warnings"] = [*memory.get("warnings", []), trace_warning]
+            return {
+                "ok": True,
+                "fact": fact,
+                "memory": memory,
+                "warnings": warnings,
+            }
 
     def save_settings(self, payload: dict) -> dict:
         updates = {}
@@ -416,9 +594,8 @@ def make_handler(dash: Dashboard):
                 if path == "/api/memory":
                     result = dash.memory_action(payload)
                     if "error" in result:
-                        return _error(
-                            self, 400, result["error"]["code"], result["error"]["message"]
-                        )
+                        status = MEMORY_STATUS.get(result["error"].get("code"), 400)
+                        return _json(self, status, result)
                     return _json(self, 200, result)
                 if path == "/api/settings":
                     return _json(self, 200, dash.save_settings(payload))
