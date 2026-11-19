@@ -38,9 +38,18 @@ function render() {
   if (name === 'observe') { setHead('observe'); view.innerHTML = observeView(data); }
   else if (name === 'tools') {
     setHead('tools');
-    view.innerHTML = state.tools === null
-      ? '<p class="empty">loading tools…</p>'
-      : toolsView(state.tools);
+    if (state.tools === null) {
+      view.innerHTML = '<p class="empty">loading tools…</p>';
+      API.get('/api/tools').then(function (payload) {
+        state.tools = payload;
+        if (viewName() === 'tools') render();
+      }).catch(function () {
+        state.tools = { tools: [], results: [] };
+        if (viewName() === 'tools') render();
+      });
+    } else {
+      view.innerHTML = toolsView(state.tools);
+    }
   }
   else if (name === 'memory') {
     setHead('memory');
