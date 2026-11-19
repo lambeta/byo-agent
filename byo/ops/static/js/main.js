@@ -36,7 +36,12 @@ function render() {
   }
   if (typeof MapLive !== 'undefined') MapLive.stop();
   if (name === 'observe') { setHead('observe'); view.innerHTML = observeView(data); }
-  else if (name === 'tools') { setHead('tools'); view.innerHTML = toolsView(state.tools); }
+  else if (name === 'tools') {
+    setHead('tools');
+    view.innerHTML = state.tools === null
+      ? '<p class="empty">loading tools…</p>'
+      : toolsView(state.tools);
+  }
   else if (name === 'memory') {
     setHead('memory');
     view.innerHTML = memoryView(state.memory || (data && data.memory));
