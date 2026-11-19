@@ -586,7 +586,7 @@ button[disabled], button[disabled]:hover, button[disabled]:active {
 /* --- Motion and forced colours -------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; }
-  button:active { transform: none; }
+  button:active, .trace > summary:active { transform: none; }
 }
 @media (forced-colors: active) {
   .card, .turn-detail, .map-wrap, .map-status, button, .recent-row, .window-btn, nav a.active {
@@ -685,27 +685,70 @@ button[disabled], button[disabled]:hover, button[disabled]:active {
 .md ul ul, .md ul ol, .md ol ul, .md ol ol { margin-bottom: 0; }
 
 /* --- Persisted turn trace (thinking and tool calls) in the transcript ------------- */
-.trace { margin: 0 0 var(--byo-space-1); }
+.trace { margin: 0 var(--byo-space-4) var(--byo-space-1) 0; }
 .trace > summary {
-  cursor: pointer; list-style: none; padding: 2px 0;
+  display: inline-flex; align-items: center; gap: 7px;
+  cursor: pointer; list-style: none; padding: 4px 10px;
+  border: var(--byo-contour-w) solid var(--byo-ink); border-radius: 999px;
+  background: var(--byo-field); color: var(--byo-ink-soft);
   font: 700 var(--byo-text-3) var(--byo-font-mono);
   text-transform: uppercase; letter-spacing: var(--byo-track-wide);
-  color: var(--byo-ink-soft);
+  transition: box-shadow var(--byo-motion-fast) ease, transform var(--byo-motion-fast) ease;
 }
 .trace > summary::-webkit-details-marker { display: none; }
-.trace > summary::before { content: '+ '; }
-.trace[open] > summary::before { content: '\2212 '; }
-.trace-body {
-  margin-top: 6px; padding-left: var(--byo-space-2);
-  border-left: var(--byo-contour-w) dashed var(--byo-ink);
+.trace > summary:hover { color: var(--byo-ink); box-shadow: var(--byo-shadow-row); }
+.trace > summary:active { transform: translate(2px, 2px); box-shadow: none; }
+.trace > summary:focus-visible {
+  outline: var(--byo-contour-w-strong) solid var(--byo-accent-live); outline-offset: 2px;
 }
-.trace-step { margin-bottom: var(--byo-space-2); }
+.trace[open] > summary { color: var(--byo-ink); box-shadow: var(--byo-shadow-row); }
+.trace-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 13px; height: 13px; border: var(--byo-contour-w) solid var(--byo-ink);
+  background: var(--byo-panel); font-size: 11px; line-height: 1;
+}
+.trace-mark::before { content: '+'; }
+.trace[open] .trace-mark::before { content: '\2212'; }
+.trace-count { color: var(--byo-ink-soft); font-variant-numeric: tabular-nums; }
+.trace-count:empty { display: none; }
+.trace-body {
+  margin: var(--byo-space-1) 0 0; padding: var(--byo-space-1) var(--byo-space-2);
+  border: var(--byo-contour-w) solid var(--byo-ink);
+  background: var(--byo-panel); box-shadow: var(--byo-shadow-row);
+  border-radius: var(--byo-radius);
+}
+.trace-step {
+  display: grid; grid-template-columns: 52px minmax(0, 1fr);
+  gap: var(--byo-space-2); padding: 7px 0;
+}
+.trace-step + .trace-step { border-top: var(--byo-contour-w) dashed var(--byo-ink); }
+.trace-tag {
+  font: 700 10px var(--byo-font-mono); text-transform: uppercase;
+  letter-spacing: var(--byo-track-wide); color: var(--byo-ink-soft); padding-top: 2px;
+}
+.trace-step[data-kind="tool"] .trace-tag { color: var(--byo-accent-live); }
+.trace-step[data-kind="gate"] .trace-tag { color: var(--byo-accent-warn); }
+.trace-step[data-kind="error"] .trace-tag { color: var(--byo-accent-bad); }
 .trace-head {
-  font: 700 var(--byo-text-3) var(--byo-font-mono);
-  color: var(--byo-ink-soft); text-transform: uppercase;
-  letter-spacing: var(--byo-track-wide);
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline;
+  font: 700 var(--byo-text-3) var(--byo-font-mono); color: var(--byo-ink);
+}
+.trace-meta {
+  font: var(--byo-text-3) var(--byo-font-mono); color: var(--byo-ink-soft);
+  font-variant-numeric: tabular-nums;
 }
 .trace-text {
+  margin-top: 3px; white-space: pre-wrap; overflow-wrap: anywhere;
+  font-size: var(--byo-text-2); color: var(--byo-ink-soft);
+}
+.trace-code {
+  margin-top: 4px; padding: 4px 6px; border: var(--byo-contour-w) solid var(--byo-ink);
+  border-radius: var(--byo-radius); background: var(--byo-field);
+  font: var(--byo-text-3) var(--byo-font-mono); color: var(--byo-ink);
   white-space: pre-wrap; overflow-wrap: anywhere;
-  font-size: var(--byo-text-2); color: var(--byo-ink);
+}
+.trace-code-label {
+  display: inline-block; min-width: 28px; margin-right: 6px;
+  text-transform: uppercase; letter-spacing: var(--byo-track-wide);
+  color: var(--byo-ink-soft);
 }

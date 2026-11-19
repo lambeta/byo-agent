@@ -69,7 +69,9 @@ function bubble(message) {
   // Thinking and tool calls stay with the message, folded until asked for.
   const trace = !me && message.turn_id
     ? '<details class="trace" data-turn="' + esc(message.turn_id) + '">' +
-        '<summary>Thinking &amp; tool calls</summary>' +
+        '<summary><span class="trace-mark" aria-hidden="true"></span>' +
+        '<span class="trace-label">Thinking &amp; tool calls</span>' +
+        '<span class="trace-count"></span></summary>' +
         '<div class="trace-body"><p class="empty">Open to load this turn\'s steps.</p></div>' +
       '</details>'
     : '';
@@ -88,6 +90,14 @@ function loadTrace(details) {
       if (payload && payload.error) throw new Error(payload.error.message || 'missing');
       body.innerHTML = traceHtml(payload);
       details.setAttribute('data-loaded', 'true');
+      const steps = (payload.turn && payload.turn.steps) || [];
+      const rounds = steps.filter(function (step) { return step.kind === 'llm'; }).length;
+      const tools = steps.filter(function (step) { return step.kind === 'tool'; }).length;
+      const count = details.querySelector('.trace-count');
+      if (count) {
+        count.textContent = rounds + (rounds === 1 ? ' round' : ' rounds') +
+          ' · ' + tools + (tools === 1 ? ' tool' : ' tools');
+      }
     })
     .catch(function () {
       body.innerHTML = '<p class="empty">This trace could not be loaded.</p>';
@@ -247,7 +257,7 @@ function settleRound(live, payload) {
   const round = lastItem(live, 'streaming', true);
   if (!round) return;
   round.live = false;
-  round.meta = (payload.duration_ms || 0) + ' ms';
+  round.meta = formatMs(payload.duration_ms);
   if (payload.stop_reason === 'tool_use') {
     round.type = 'thinking';
     round.title = 'Thinking · round ' + (round.iteration || '?');
@@ -364,7 +374,7 @@ async function send(message) {
       tool.pending = '';
       tool.title = 'Tool call · ' + (payload.tool || 'tool') + (payload.ok === false ? ' · failed' : '');
       tool.body = JSON.stringify(payload.args) + ' → ' + String(payload.output || '').slice(0, 160);
-      tool.meta = (payload.duration_ms || 0) + ' ms';
+      tool.meta = formatMs(payload.duration_ms);
     } else if (kind === 'consolidation') {
       addItem(state.live, {
         type: 'output', node: 'consolidation', title: 'Memory written',

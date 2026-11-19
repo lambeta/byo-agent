@@ -304,6 +304,23 @@ function turnCard(turn) {
 // The persisted trace of one turn: the memory decision, each model round with the
 // text it produced, and each tool call. Loaded on demand from /api/turn so the
 // history stays cheap until a person opens it.
+function formatMs(value) {
+  const ms = Number(value) || 0;
+  if (ms >= 1000) return (ms / 1000).toFixed(1).replace(/\.0$/, '') + ' s';
+  return ms + ' ms';
+}
+
+function traceStep(kind, tag, head, meta, body) {
+  return '<div class="trace-step" data-kind="' + kind + '">' +
+    '<div class="trace-tag">' + tag + '</div>' +
+    '<div class="trace-main"><div class="trace-head">' + head +
+    (meta ? ' <span class="trace-meta">' + meta + '</span>' : '') + '</div>' +
+    body + '</div></div>';
+}
+
+// The persisted trace of one turn: the memory decision, each model round with the
+// text it produced, and each tool call. Loaded on demand from /api/turn so the
+// history stays cheap until a person opens it.
 function traceHtml(payload) {
   const turn = (payload && payload.turn) || {};
   const steps = turn.steps || [];
@@ -311,25 +328,33 @@ function traceHtml(payload) {
   const parts = [];
   steps.forEach(function (step) {
     if (step.kind === 'gate') {
-      parts.push('<div class="trace-step" data-kind="gate">' +
-        '<div class="trace-head">Memory gate · ' + esc(step.decision || '?') + '</div>' +
-        '<div class="trace-text">' + esc(step.reason || '') + '</div></div>');
+      parts.push(traceStep(
+        'gate', 'gate', esc(step.decision || '?'), '',
+        step.reason ? '<div class="trace-text">' + esc(step.reason) + '</div>' : ''
+      ));
     } else if (step.kind === 'llm') {
-      const head = 'Round ' + esc(step.iteration == null ? '?' : step.iteration) + ' · ' +
-        esc(step.model || '') + ' · ' + esc(step.duration_ms == null ? 0 : step.duration_ms) + ' ms';
       const text = String(step.text == null ? '' : step.text).trim();
-      const body = text && text !== reply ? text : '';
-      parts.push('<div class="trace-step" data-kind="llm">' +
-        '<div class="trace-head">' + head + '</div>' +
-        (body ? '<div class="trace-text">' + esc(body) + '</div>' : '') + '</div>');
+      const answer = !text || text === reply;
+      const meta = esc(step.model || '') + ' · ' + esc(formatMs(step.duration_ms)) +
+        ' · ' + esc(step.in || 0) + ' in / ' + esc(step.out || 0) + ' out';
+      const body = !answer && text ? '<div class="trace-text">' + esc(text) + '</div>' : '';
+      parts.push(traceStep(
+        'llm', answer ? 'answer' : 'think',
+        'round ' + esc(step.iteration == null ? '?' : step.iteration), meta, body
+      ));
     } else if (step.kind === 'tool') {
-      const head = 'Tool · ' + esc(step.tool || '?') + ' · ' +
-        esc(step.duration_ms == null ? 0 : step.duration_ms) + ' ms' +
-        (step.ok === false ? ' · failed' : '');
-      parts.push('<div class="trace-step" data-kind="tool">' +
-        '<div class="trace-head">' + head + '</div>' +
-        '<div class="trace-text">' + esc(step.args || '') + ' → ' + esc(step.output || '') +
-        '</div></div>');
+      const failed = step.ok === false;
+      const meta = esc(formatMs(step.duration_ms)) + (failed ? ' · failed' : ' · ok');
+      const body = '<div class="trace-code"><span class="trace-code-label">in</span>' +
+        esc(step.args || '') + '</div>' +
+        '<div class="trace-code"><span class="trace-code-label">out</span>' +
+        esc(step.output || '') + '</div>';
+      parts.push(traceStep('tool', 'tool', esc(step.tool || '?'), meta, body));
+    } else if (step.kind === 'error') {
+      parts.push(traceStep(
+        'error', 'error', esc(step.stage || '?'), '',
+        '<div class="trace-text">' + esc(step.message || '') + '</div>'
+      ));
     }
   });
   if (!parts.length) return '<p class="empty">This turn recorded no steps.</p>';
