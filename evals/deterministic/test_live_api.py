@@ -168,16 +168,18 @@ def test_a_real_turn_lights_from_its_own_start(settings):
     assert starts and starts[0]["states"] == {"gate": "live"}
     model = [cue for cue in payload["cues"] if cue["step"] == "llm_start"]
     assert model and model[0]["states"] == {"model": "live"}
-    assert start_of(payload, "gate_start") < start_of(payload, "llm_start")
+    # A scripted turn can finish inside one millisecond, so order is cue order,
+    # not timestamp order.
+    assert cue_seq(payload, "gate_start") < cue_seq(payload, "llm_start")
     assert payload["status"] == "reply"
     agent.close()
 
 
-def start_of(payload, step):
+def cue_seq(payload, step):
     for cue in payload["cues"]:
         if cue["step"] == step:
-            return cue["at"]
-    return ""
+            return cue["seq"]
+    return -1
 
 
 def test_a_busy_week_stays_within_the_poll_budget(server, settings):
