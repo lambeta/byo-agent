@@ -74,6 +74,9 @@ class Settings:
     consolidate_every: int = 6
     retrieval_top_k: int = 4
     port: int = DEFAULT_PORT
+    weather_enabled: bool = True
+    weather_timeout_seconds: int = 5
+    weather_default_place: str = ""
 
     @property
     def dotenv_path(self) -> Path:
@@ -118,6 +121,17 @@ class Settings:
         return self.small_model or self.effective_model()
 
 
+def _bool(env: Mapping[str, str], name: str, default: bool) -> bool:
+    raw = (env.get(name) or "").strip().lower()
+    if not raw:
+        return default
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return False
+    raise ConfigError(f"{name} must be true or false, got {raw!r}.")
+
+
 def _int(env: Mapping[str, str], name: str, default: int) -> int:
     raw = (env.get(name) or "").strip()
     if not raw:
@@ -155,6 +169,11 @@ def load_settings(
         consolidate_every=_int(merged, "BYO_CONSOLIDATE_EVERY", 6),
         retrieval_top_k=_int(merged, "BYO_RETRIEVAL_TOP_K", 4),
         port=_int(merged, "BYO_PORT", DEFAULT_PORT),
+        weather_enabled=_bool(merged, "BYO_WEATHER_ENABLED", True),
+        weather_timeout_seconds=min(
+            30, _int(merged, "BYO_WEATHER_TIMEOUT_SECONDS", 5)
+        ),
+        weather_default_place=(merged.get("BYO_WEATHER_DEFAULT_PLACE") or "").strip(),
     )
 
 

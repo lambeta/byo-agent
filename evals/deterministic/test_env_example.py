@@ -21,6 +21,9 @@ EXPECTED = {
     "BYO_CONSOLIDATE_EVERY",
     "BYO_RETRIEVAL_TOP_K",
     "BYO_PORT",
+    "BYO_WEATHER_ENABLED",
+    "BYO_WEATHER_TIMEOUT_SECONDS",
+    "BYO_WEATHER_DEFAULT_PLACE",
 }
 
 
@@ -47,6 +50,8 @@ def test_documented_numeric_defaults_match_the_code(settings):
     assert int(values["BYO_RETRIEVAL_TOP_K"]) == loaded.retrieval_top_k
     assert int(values["BYO_PORT"]) == loaded.port
     assert values["BYO_PROVIDER"] == loaded.provider
+    assert int(values["BYO_WEATHER_TIMEOUT_SECONDS"]) == loaded.weather_timeout_seconds
+    assert loaded.weather_enabled is True
 
 
 def test_runtime_dependency_budget():

@@ -48,6 +48,7 @@ def test_tool_set_is_closed(settings, conn):
         "list_events",
         "save_note",
         "send_message",
+        "query_weather",
         "manage_memory",
         "update_persona",
     }

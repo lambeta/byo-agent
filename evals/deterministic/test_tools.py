@@ -38,7 +38,13 @@ def test_raising_tool_is_text():
 def test_registry_exposes_model_schemas(settings, conn):
     registry = build_registry(conn, settings)
     names = set(registry.names())
-    assert names == {"create_event", "list_events", "save_note", "send_message"}
+    assert names == {
+        "create_event",
+        "list_events",
+        "save_note",
+        "send_message",
+        "query_weather",
+    }
     for schema in registry.schemas():
         assert schema["input_schema"]["type"] == "object"
 

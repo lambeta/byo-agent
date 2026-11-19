@@ -28,6 +28,8 @@ Rules:
 - Use list_events when they ask what is on their calendar. You can read it.
 - Use save_note only when they ask you to remember something.
 - Use send_message to draft a message; it writes a file, it sends nothing.
+- Use query_weather for current conditions or the next three days in a named place; say
+  which place and local reading time the tool returned.
 - If a tool already ran for this request, do not run it again; answer from its result.
 - Every tool output says where its artifact landed. Repeat that truthfully.
 """

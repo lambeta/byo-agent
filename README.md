@@ -38,7 +38,7 @@ context, the loop and tools, the reply, the memory stores, the trajectory and sp
 part when its step actually starts and keeps it lit for as long as the step runs — a two-second
 model call is a two-second light, not a pulse — and every round and tool call stays countable. From
 the browser or the terminal, the map is a projection of the recorded turn, never a re-enactment. Click a node to open its view —
-the Tools node opens the Tools view (the six tools the model can call, plus what recent calls produced), the
+the Tools node opens the Tools view (the seven tools the model can call, plus what recent calls produced), the
 memory nodes open the Memory view (the gate's calls, facts, episodes, consolidation); click a loop or reply
 (or a turn in the list) to read one turn's summary, one-axis timeline, hotspots and raw record. Evals and release stay command-line tools and are deliberately not on the
 map.
@@ -47,6 +47,13 @@ The chat dock beside the map separates what a live turn is doing: a **thinking**
 model's own commentary while it works, a **tool call** lane per tool, and a streaming **output**
 lane for the answer. Each lane is tagged with the map component it stands for, and it lights up
 when that component is the one the map is showing as running.
+
+Weather is the seventh tool. `query_weather` resolves a city name and answers for today plus the
+next three days, keylessly: it reads Open-Meteo over the network, needs no credential, and labels
+every number with its unit. It refuses to guess between same-named cities — it names the
+candidates — and says when the service is unavailable instead of inventing a reading. Disable it
+with `BYO_WEATHER_ENABLED=false`; the timeout and an optional default city are the other two
+weather settings.
 
 ## What lives where
 
