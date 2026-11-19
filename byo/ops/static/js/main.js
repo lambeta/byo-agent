@@ -66,9 +66,32 @@ function bubble(message) {
   const body = me
     ? '<div class="bubble-body">' + esc(message.content) + '</div>'
     : '<div class="bubble-body md">' + renderMarkdown(message.content) + '</div>';
-  return '<div class="bubble' + (me ? ' me' : '') + '">' +
+  // Thinking and tool calls stay with the message, folded until asked for.
+  const trace = !me && message.turn_id
+    ? '<details class="trace" data-turn="' + esc(message.turn_id) + '">' +
+        '<summary>Thinking &amp; tool calls</summary>' +
+        '<div class="trace-body"><p class="empty">Open to load this turn\'s steps.</p></div>' +
+      '</details>'
+    : '';
+  return trace + '<div class="bubble' + (me ? ' me' : '') + '">' +
     '<div class="bubble-meta">' + (me ? 'you' : 'byo') + ' · ' + esc(stamp(message.created_at)) + '</div>' +
     body + '</div>';
+}
+
+function loadTrace(details) {
+  const turnId = details.getAttribute('data-turn');
+  const body = details.querySelector('.trace-body');
+  if (!turnId || !body) return;
+  body.innerHTML = '<p class="empty">Loading…</p>';
+  API.get('/api/turn?turn_id=' + encodeURIComponent(turnId) + '&window=all')
+    .then(function (payload) {
+      if (payload && payload.error) throw new Error(payload.error.message || 'missing');
+      body.innerHTML = traceHtml(payload);
+      details.setAttribute('data-loaded', 'true');
+    })
+    .catch(function () {
+      body.innerHTML = '<p class="empty">This trace could not be loaded.</p>';
+    });
 }
 
 function renderChat() {
@@ -76,18 +99,10 @@ function renderChat() {
   if (!history) return;
   const wanted = state.viewing || state.session;
   const generation = ++state.chatGen;
-  API.get('/api/session?action=history&session_id=' + encodeURIComponent(wanted))
+  return API.get('/api/session?action=history&session_id=' + encodeURIComponent(wanted))
     .then(function (payload) {
       if (state.chatGen !== generation) return;  // a newer load won
-      let messages = payload.messages || [];
-      // The pinned live card already shows this turn's message and reply.
-      const pinned = state.live && state.live.turn_id && !state.viewing;
-      if (pinned && messages.length && messages[messages.length - 1].role === 'assistant') {
-        messages = messages.slice(0, -1);
-        if (messages.length && messages[messages.length - 1].role === 'user') {
-          messages = messages.slice(0, -1);
-        }
-      }
+      const messages = payload.messages || [];
       const past = state.viewing && state.viewing !== state.session;
       history.innerHTML =
         (past ? '<p class="empty">Reading a past session — sending returns to the current chat.</p>' : '') +
@@ -101,6 +116,14 @@ function renderChat() {
       history.innerHTML = '<p class="empty">History unavailable.</p>';
     });
 }
+
+// A trace loads its turn the first time it is opened, not when the history renders.
+document.getElementById('chat-history').addEventListener('toggle', function (event) {
+  const details = event.target;
+  if (!details || !details.classList || !details.classList.contains('trace')) return;
+  if (!details.open || details.getAttribute('data-loaded') === 'true') return;
+  loadTrace(details);
+}, true);
 
 function scrollChat() {
   const log = document.getElementById('docklog');
@@ -367,11 +390,15 @@ async function send(message) {
     paintLive();
     scrollChat();
   });
-  // Keep the finished card (its lanes are the only place the thinking and the tool
-  // calls are readable) and hide its duplicate bubbles from the history list below.
   const finished = state.live;
-  paintLive();
+  // Let the transcript take the finished turn before the live card goes away: the
+  // history must never blink out while a reply is arriving.
   await refresh();
+  await renderChat();
+  if (state.live === finished) {
+    state.live = null;
+    paintLive();
+  }
   return finished;
 }
 

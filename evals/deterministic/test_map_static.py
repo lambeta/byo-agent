@@ -169,3 +169,16 @@ def test_the_chat_log_reads_oldest_first():
     assert log.index('id="chat-history"') < log.index('id="chat-live"'), (
         "the transcript must come before the live card so the newest turn is at the bottom"
     )
+
+
+def test_history_keeps_the_thinking_and_tools_collapsible():
+    main = read("js/main.js")
+    render = read("js/render.js")
+    css = read("style.css")
+    # Each assistant message carries a folded trace that loads its turn on demand.
+    assert 'class="trace"' in main and "data-turn=" in main
+    assert "loadTrace" in main and "traceHtml" in render
+    assert "/api/turn?turn_id=" in main
+    assert ".trace" in css and ".trace-step" in css
+    # The pinned live card must not hide the transcript: the old dedupe is gone.
+    assert "The pinned live card already shows" not in main

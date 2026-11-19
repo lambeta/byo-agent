@@ -99,6 +99,14 @@ def test_start_records_carry_no_results(settings):
     agent.close()
 
 
+def test_the_model_text_is_recorded_so_history_can_keep_it(settings):
+    agent = Agent(settings, adapter=script(text("the answer")), memory=None)
+    agent.respond("hi")
+    llm = next(event for event in turn_events(settings) if event["type"] == "llm")
+    assert llm["text"] == "the answer"
+    agent.close()
+
+
 def test_start_records_are_redacted(settings):
     settings.ensure_home()
     sink = Trajectory(settings)

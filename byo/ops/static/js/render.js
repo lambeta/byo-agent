@@ -301,6 +301,41 @@ function turnCard(turn) {
 // The live card separates the three things a turn actually does — thinking, tool
 // calls and output — into their own lanes. Each lane names the map component it
 // stands for (data-node) so the lit component and the running lane agree.
+// The persisted trace of one turn: the memory decision, each model round with the
+// text it produced, and each tool call. Loaded on demand from /api/turn so the
+// history stays cheap until a person opens it.
+function traceHtml(payload) {
+  const turn = (payload && payload.turn) || {};
+  const steps = turn.steps || [];
+  const reply = String(turn.reply == null ? '' : turn.reply).trim();
+  const parts = [];
+  steps.forEach(function (step) {
+    if (step.kind === 'gate') {
+      parts.push('<div class="trace-step" data-kind="gate">' +
+        '<div class="trace-head">Memory gate · ' + esc(step.decision || '?') + '</div>' +
+        '<div class="trace-text">' + esc(step.reason || '') + '</div></div>');
+    } else if (step.kind === 'llm') {
+      const head = 'Round ' + esc(step.iteration == null ? '?' : step.iteration) + ' · ' +
+        esc(step.model || '') + ' · ' + esc(step.duration_ms == null ? 0 : step.duration_ms) + ' ms';
+      const text = String(step.text == null ? '' : step.text).trim();
+      const body = text && text !== reply ? text : '';
+      parts.push('<div class="trace-step" data-kind="llm">' +
+        '<div class="trace-head">' + head + '</div>' +
+        (body ? '<div class="trace-text">' + esc(body) + '</div>' : '') + '</div>');
+    } else if (step.kind === 'tool') {
+      const head = 'Tool · ' + esc(step.tool || '?') + ' · ' +
+        esc(step.duration_ms == null ? 0 : step.duration_ms) + ' ms' +
+        (step.ok === false ? ' · failed' : '');
+      parts.push('<div class="trace-step" data-kind="tool">' +
+        '<div class="trace-head">' + head + '</div>' +
+        '<div class="trace-text">' + esc(step.args || '') + ' → ' + esc(step.output || '') +
+        '</div></div>');
+    }
+  });
+  if (!parts.length) return '<p class="empty">This turn recorded no steps.</p>';
+  return parts.join('');
+}
+
 function liveLane(item) {
   const open = item.live ? 'true' : 'false';
   const prose = item.type === 'output' || item.type === 'streaming';

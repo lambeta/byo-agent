@@ -112,6 +112,9 @@ def run_loop(
                 "out": response.usage.output_tokens,
             },
             "duration_ms": duration_ms,
+            # The model's own words for this call. Persisted so the chat can keep the
+            # thinking after the turn ends, bounded so a long answer stays cheap.
+            "text": response.text()[:4000],
         }
         result.llm_calls.append(call)
         notify("llm", call)
@@ -186,6 +189,7 @@ def _final_answer(
             "out": response.usage.output_tokens,
         },
         "duration_ms": int((time.perf_counter() - started) * 1000),
+        "text": response.text()[:4000],
     }
     result.llm_calls.append(call)
     notify("llm", call)

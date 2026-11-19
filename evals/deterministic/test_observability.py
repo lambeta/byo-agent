@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from byo.ops import observability
 from byo.ops.observability import build_turn, group_turns, read_events, spend
 
 
@@ -110,3 +111,16 @@ def test_spend_totals(settings):
     totals = spend(events)
     assert totals["total_usd"] == 0.0006
     assert totals["by_day"] == [{"day": "2026-11-18", "usd": 0.0006}]
+
+
+def test_llm_steps_keep_the_model_text(settings):
+    from scripted import script, text
+
+    from byo.app import Agent
+
+    agent = Agent(settings, adapter=script(text("hello there")), memory=None)
+    agent.respond("hi")
+    payload = observability.payload(settings.home, "all")
+    llm = [step for step in payload["turns"][0]["steps"] if step["kind"] == "llm"][0]
+    assert llm["text"] == "hello there"
+    agent.close()

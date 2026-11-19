@@ -19,6 +19,12 @@ from byo.ops.pricing import cost
 PREVIEW = 2000
 
 
+def _bounded(value: Any, limit: int = PREVIEW) -> str:
+    """A truncated value that keeps its line breaks (thinking, replies)."""
+    text = "" if value is None else str(value)
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
 def _preview(value: Any, limit: int = PREVIEW) -> str:
     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
     text = " ".join(str(text).split())
@@ -121,6 +127,7 @@ def _step(event: dict[str, Any], provider: str, model: str) -> dict[str, Any] | 
             "out": int(usage.get("out", 0) or 0),
             "usd": round(float(usd), 6),
             "duration_ms": event.get("duration_ms"),
+            "text": _bounded(event.get("text")),
             "ok": True,
         }
     if kind == "tool":

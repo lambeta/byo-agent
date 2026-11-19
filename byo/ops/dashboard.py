@@ -220,7 +220,22 @@ class Dashboard:
             "WHERE session_id = ? ORDER BY id LIMIT 500",
             (session_id,),
         ).fetchall()
-        return {"session_id": session_id, "messages": [dict(row) for row in rows]}
+        messages = []
+        for row in rows:
+            item = dict(row)
+            turn_id = ""
+            if item.get("meta"):
+                try:
+                    meta = json.loads(item["meta"])
+                except (TypeError, ValueError):
+                    meta = {}
+                if isinstance(meta, dict):
+                    turn_id = str(meta.get("turn_id") or "")
+            # The assistant row carries the turn id, so the chat can load that
+            # turn's thinking and tool calls on demand.
+            item["turn_id"] = turn_id if item.get("role") == "assistant" else ""
+            messages.append(item)
+        return {"session_id": session_id, "messages": messages}
 
     def memory(self, repair: bool = True) -> dict:
         """The Memory view payload: facts, episodes, counts, warnings and status.

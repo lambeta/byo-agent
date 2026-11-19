@@ -683,3 +683,29 @@ button[disabled], button[disabled]:hover, button[disabled]:active {
 .md li.task { list-style: none; }
 .md li.task input { margin-right: 6px; vertical-align: middle; accent-color: var(--byo-accent-live); }
 .md ul ul, .md ul ol, .md ol ul, .md ol ol { margin-bottom: 0; }
+
+/* --- Persisted turn trace (thinking and tool calls) in the transcript ------------- */
+.trace { margin: 0 0 var(--byo-space-1); }
+.trace > summary {
+  cursor: pointer; list-style: none; padding: 2px 0;
+  font: 700 var(--byo-text-3) var(--byo-font-mono);
+  text-transform: uppercase; letter-spacing: var(--byo-track-wide);
+  color: var(--byo-ink-soft);
+}
+.trace > summary::-webkit-details-marker { display: none; }
+.trace > summary::before { content: '+ '; }
+.trace[open] > summary::before { content: '\2212 '; }
+.trace-body {
+  margin-top: 6px; padding-left: var(--byo-space-2);
+  border-left: var(--byo-contour-w) dashed var(--byo-ink);
+}
+.trace-step { margin-bottom: var(--byo-space-2); }
+.trace-head {
+  font: 700 var(--byo-text-3) var(--byo-font-mono);
+  color: var(--byo-ink-soft); text-transform: uppercase;
+  letter-spacing: var(--byo-track-wide);
+}
+.trace-text {
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  font-size: var(--byo-text-2); color: var(--byo-ink);
+}

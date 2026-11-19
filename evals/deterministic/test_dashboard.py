@@ -213,6 +213,12 @@ def test_tools_api_lists_the_registry_catalog(settings):
         assert tool["description"] and tool["input_schema"]["type"] == "object"
 
 
+def test_tools_api_includes_the_weather_card(server):
+    payload = json.loads(call(server, "/api/tools"))
+    names = [tool["name"] for tool in payload["tools"]]
+    assert "query_weather" in names
+
+
 def test_tools_api_results_come_from_the_trajectory(settings):
     srv = make_memory_server(
         settings,
@@ -806,3 +812,11 @@ def test_history_reads_oldest_first(settings, conn):
     payload = Dashboard(settings, agent=agent).history("default")
     assert [row["content"] for row in payload["messages"]] == ["one", "two"]
     agent.close()
+
+
+def test_history_points_at_the_turn_so_a_trace_can_be_loaded(server):
+    call(server, "/api/chat/stream", {"message": "book a catch-up on friday"})
+    payload = json.loads(call(server, "/api/session?action=history&session_id=default"))
+    assistant = [row for row in payload["messages"] if row["role"] == "assistant"]
+    assert assistant, "the turn must be in the transcript"
+    assert assistant[0]["turn_id"].startswith("t_")
