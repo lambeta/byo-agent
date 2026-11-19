@@ -790,3 +790,19 @@ def test_unexpected_storage_failure_is_explicit_and_recorded(settings, monkeypat
     assert len(changes) == 1
     assert changes[0]["outcome"] == "failed"
     assert changes[0]["code"] == "fact_failed"
+
+
+def test_history_reads_oldest_first(settings, conn):
+    from byo.ops.dashboard import Dashboard
+
+    agent = Agent(settings, adapter=script(text("ok")), memory=None)
+    conn.execute(
+        "INSERT INTO chat_log (role, content, session_id) VALUES ('user', 'one', 'default')"
+    )
+    conn.execute(
+        "INSERT INTO chat_log (role, content, session_id) VALUES ('assistant', 'two', 'default')"
+    )
+    conn.commit()
+    payload = Dashboard(settings, agent=agent).history("default")
+    assert [row["content"] for row in payload["messages"]] == ["one", "two"]
+    agent.close()

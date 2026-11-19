@@ -161,3 +161,11 @@ def test_the_composer_fits_its_wrapped_placeholder():
     chatbar = chatbar[: chatbar.index("}")]
     assert "flex: none" in chatbar
     assert "input.style.height = ''" in main
+
+
+def test_the_chat_log_reads_oldest_first():
+    shell = read("index.html")
+    log = shell[shell.index('id="docklog"'):]
+    assert log.index('id="chat-history"') < log.index('id="chat-live"'), (
+        "the transcript must come before the live card so the newest turn is at the bottom"
+    )

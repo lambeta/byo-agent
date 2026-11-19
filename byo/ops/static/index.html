@@ -69,8 +69,10 @@
       <select id="chat-sessions" class="sessbtn" title="History" aria-label="Chat history"></select>
     </div>
     <div class="chatlog" id="docklog">
-      <div id="chat-live"></div>
+      <!-- Oldest first: the transcript reads top to bottom, and the live card (the
+           newest turn) sits at the bottom where the eye already is. -->
       <div id="chat-history"></div>
+      <div id="chat-live"></div>
     </div>
     <form class="chatbar" id="chat-form" autocomplete="off">
       <textarea id="chat-input" rows="1" placeholder="Ask for something, or say what to remember" autocomplete="off"></textarea>
