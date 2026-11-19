@@ -285,6 +285,7 @@ function mapNodeClick(id) {
   if (node.destination === 'chat') location.hash = '#chat';
   else if (node.destination === 'session') location.hash = '#chat';
   else if (node.destination === 'memory') location.hash = '#memory';
+  else if (node.destination === 'tools') location.hash = '#tools';
   else if (node.destination === 'observability') location.hash = '#observe';
   else if (node.destination === 'turn') mapOpenSelected();
 }
@@ -478,7 +479,9 @@ function renderTurnDetail(payload) {
     '%;width:0.8%"></span></div><div class="tl-meta">' +
     (turn.state === 'failed' ? 'failed' : turn.state === 'unfinished' ? 'unfinished' : 'delivered') +
     '</div></div>');
-  if (turn.reply) rows.push('<div class="reply detail-reply">' + esc(turn.reply) + '</div>');
+  if (turn.reply) {
+    rows.push('<div class="reply detail-reply md">' + renderMarkdown(turn.reply) + '</div>');
+  }
 
   const memoryIndex = steps.findIndex(function (step) { return step.kind === 'memory_write'; });
   if (memoryIndex >= 0) {

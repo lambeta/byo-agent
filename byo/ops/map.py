@@ -51,7 +51,7 @@ NODES: list[dict[str, Any]] = [
     },
     {
         "id": "tools", "label": "Tools", "group": "harness", "stage": "tool",
-        "shape": "box", "x": 520, "y": 190, "w": 140, "h": 56, "destination": "turn",
+        "shape": "box", "x": 520, "y": 190, "w": 140, "h": 56, "destination": "tools",
     },
     {
         "id": "reply", "label": "Reply", "group": "harness", "stage": "reply",

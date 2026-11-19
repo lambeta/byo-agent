@@ -146,3 +146,191 @@ def test_unknown_session_action_is_a_400(server):
         raise AssertionError("expected a 400")
     except urllib.error.HTTPError as exc:
         assert exc.code == 400
+
+
+def test_the_stream_marks_when_a_step_starts(server):
+    body = call(server, "/api/chat/stream", {"message": "book a catch-up on friday"})
+    events = [
+        line[len("event: "):]
+        for line in body.decode("utf-8").splitlines()
+        if line.startswith("event: ")
+    ]
+    assert "llm_start" in events and "tool_start" in events
+    assert events.index("llm_start") < events.index("llm")
+    assert events.index("tool_start") < events.index("tool")
+    assert events.count("llm_start") == 2
+    assert events[-1] == "done"
+
+
+# --- spec 006: tools and memory working in the dashboard --------------------
+#
+# The fixture above builds agents with memory=None. The helper below keeps the
+# real Memory in the loop so the dashboard path is tested the way it runs.
+
+
+def memory_agent(settings, *responses):
+    """An agent wired the way the dashboard really runs: memory enabled."""
+    return Agent(settings, adapter=script(*responses))  # memory defaults to AUTO
+
+
+def make_memory_server(settings, *responses):
+    agent = memory_agent(settings, *responses)
+    srv = make_server(settings, agent=agent, port=0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+GATE_SKIP = text('{"needs_memory": false, "reason": "no memory needed"}')
+GATE_RETRIEVE = text('{"needs_memory": true, "reason": "asks about a known fact"}')
+
+
+def test_tools_api_lists_the_registry_catalog(settings):
+    srv = make_memory_server(settings, GATE_SKIP, text("hi"))
+    try:
+        payload = json.loads(call(srv, "/api/tools"))
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    names = [tool["name"] for tool in payload["tools"]]
+    assert names == srv.dashboard.agent.tools.names()
+    for tool in payload["tools"]:
+        assert tool["description"] and tool["input_schema"]["type"] == "object"
+
+
+def test_tools_api_results_come_from_the_trajectory(settings):
+    srv = make_memory_server(
+        settings,
+        GATE_SKIP,
+        tool_call("list_events", {"start": "2026-11-19", "end": "2026-11-26"}),
+        text("Nothing this week."),
+    )
+    try:
+        before = json.loads(call(srv, "/api/tools"))
+        assert before["results"] == []
+        call(srv, "/api/chat/stream", {"message": "anything on my calendar this week?"})
+        after = json.loads(call(srv, "/api/tools"))
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert len(after["results"]) == 1
+    result = after["results"][0]
+    assert result["tool"] == "list_events"
+    assert result["ok"] is True
+    assert isinstance(result["duration_ms"], int)
+    assert result["turn_id"].startswith("t_")
+    assert result["output"]
+
+
+def test_stream_orders_tool_frames_before_the_reply(server):
+    body = call(server, "/api/chat/stream", {"message": "book a catch-up on friday"})
+    events = [
+        line[len("event: "):]
+        for line in body.decode("utf-8").splitlines()
+        if line.startswith("event: ")
+    ]
+    assert events.index("tool_start") < events.index("tool")
+    assert events.index("tool") < events.index("done")
+
+
+def seed_fact(agent, subject, content):
+    agent.conn.execute(
+        "INSERT INTO facts (subject, content, source) VALUES (?, ?, 'user')",
+        (subject, content),
+    )
+    agent.conn.commit()
+    agent.memory.rewrite_mirror()
+
+
+def test_a_dashboard_turn_gates_and_recalls_memory(settings):
+    srv = make_memory_server(settings, GATE_RETRIEVE, text("You take it black."))
+    try:
+        seed_fact(srv.dashboard.agent, "coffee", "takes coffee black")
+        call(srv, "/api/chat/stream", {"message": "how do I take my coffee?"})
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    calls = srv.dashboard.agent.adapter.calls
+    assert len(calls) == 2  # gate, then the loop
+    assert "takes coffee black" in calls[1].system
+
+
+def test_memory_api_reports_gate_and_consolidation_status(settings):
+    srv = make_memory_server(settings, GATE_RETRIEVE, text("You take it black."))
+    try:
+        seed_fact(srv.dashboard.agent, "coffee", "takes coffee black")
+        call(srv, "/api/chat/stream", {"message": "how do I take my coffee?"})
+        payload = json.loads(call(srv, "/api/memory"))
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert payload["facts"] and payload["episodes"] == []
+    gate = payload["gate"]
+    assert gate["retrieve"] == 1 and gate["skip"] == 0
+    assert gate["last_decision"] == "retrieve"
+    consolidation = payload["consolidation"]
+    assert consolidation["pending"] == 2  # the user message and the reply
+    assert consolidation["threshold"] == srv.dashboard.agent.settings.consolidate_every
+    assert consolidation["last_run_at"] is None
+
+
+def test_memory_mutations_leave_store_payload_and_mirror_consistent(settings):
+    srv = make_memory_server(settings)
+    mirror = srv.dashboard.agent.settings.mirror_path
+    try:
+        added = json.loads(call(
+            srv, "/api/memory", {"action": "add", "subject": "tea", "content": "green over black"}
+        ))
+        fact_id = added["memory"]["facts"][0]["id"]
+        assert "green over black" in mirror.read_text(encoding="utf-8")
+
+        edited = json.loads(call(
+            srv, "/api/memory",
+            {"action": "edit", "id": fact_id, "subject": "tea", "content": "black over green"}
+        ))
+        assert edited["memory"]["facts"][0]["content"] == "black over green"
+        assert "black over green" in mirror.read_text(encoding="utf-8")
+        assert "green over black" not in mirror.read_text(encoding="utf-8")
+
+        forgotten = json.loads(call(srv, "/api/memory", {"action": "forget", "id": fact_id}))
+        assert forgotten["memory"]["facts"] == []
+        assert "black over green" not in mirror.read_text(encoding="utf-8")
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def turn_kinds(settings, turn_id):
+    files = list(settings.trajectories_dir.glob("*.jsonl"))
+    records = [
+        json.loads(line)
+        for path in files
+        for line in path.read_text(encoding="utf-8").splitlines()
+    ]
+    return [r["type"] for r in records if r["turn_id"] == turn_id]
+
+
+def test_cli_and_dashboard_record_the_same_turn_shape(settings):
+    scenario = lambda: [  # noqa: E731 - a fresh script per surface
+        GATE_RETRIEVE,
+        tool_call("list_events", {"start": "2026-11-19", "end": "2026-11-26"}),
+        text("Nothing this week."),
+    ]
+
+    cli_agent = memory_agent(settings, *scenario())
+    seed_fact(cli_agent, "coffee", "takes coffee black")
+    cli_agent.respond("how do I take my coffee?", source="cli")
+    cli_id = cli_agent.trajectory.turn_id
+    cli_agent.close()
+
+    srv = make_memory_server(settings, *scenario())
+    try:
+        seed_fact(srv.dashboard.agent, "coffee", "takes coffee black")
+        call(srv, "/api/chat/stream", {"message": "how do I take my coffee?"})
+        dash_id = srv.dashboard.agent.trajectory.turn_id
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+    assert turn_kinds(settings, cli_id) == turn_kinds(settings, dash_id)
+    assert "gate" in turn_kinds(settings, cli_id)
+    assert "tool" in turn_kinds(settings, cli_id)

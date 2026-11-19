@@ -86,7 +86,7 @@ def test_graph_has_the_documented_shape():
     assert len(edges) == len(data["edges"])
     for node in data["nodes"]:
         assert set(node["destination"] for node in data["nodes"]) <= {
-            "chat", "session", "memory", "turn", "observability"
+            "chat", "session", "memory", "tools", "turn", "observability"
         }
         group = groups[node["group"]]
         assert group["x"] <= node["x"] and node["x"] + node["w"] <= group["x"] + group["w"]

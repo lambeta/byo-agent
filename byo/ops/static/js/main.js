@@ -1,8 +1,9 @@
 const state = { data: null, view: 'overview', live: null, map: null, mapError: false, window: '7d',
-  session: 'default', viewing: null, chatGen: 0 };
+  session: 'default', viewing: null, chatGen: 0, tools: null };
 
 const VIEW_HEADS = {
   overview: ['Overview', 'The runtime map, live.'],
+  tools: ['Tools', 'What the agent can call, and what its calls produced.'],
   memory: ['Memory', 'Facts and episodes the agent kept.'],
   observe: ['Observability', 'Turns, timing and spend.'],
   settings: ['Settings', 'Provider, model and key.'],
@@ -35,6 +36,7 @@ function render() {
   }
   if (typeof MapLive !== 'undefined') MapLive.stop();
   if (name === 'observe') { setHead('observe'); view.innerHTML = observeView(data); }
+  else if (name === 'tools') { setHead('tools'); view.innerHTML = toolsView(state.tools); }
   else if (name === 'memory') { setHead('memory'); view.innerHTML = memoryView(data); }
   else if (name === 'settings') { setHead('settings'); view.innerHTML = settingsView(data); }
   else { setHead('overview'); location.hash = '#overview'; renderOverview(); }
@@ -130,6 +132,13 @@ async function refresh() {
       state.mapError = false;
     } catch (error) {
       state.mapError = true;
+    }
+  }
+  if (viewName() === 'tools') {
+    try {
+      state.tools = await API.get('/api/tools');
+    } catch (error) {
+      state.tools = { tools: [], results: [] };
     }
   }
   render();

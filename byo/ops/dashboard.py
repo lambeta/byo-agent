@@ -87,6 +87,8 @@ class Dashboard:
                 "episodes": episodes,
                 "counts": {"facts": len(facts), "episodes": len(episodes)},
                 "mirror_path": str(self.settings.mirror_path),
+                "gate": self._gate_status(),
+                "consolidation": self._consolidation_status(conn),
             },
             "sessions": sessions,
         }
@@ -149,6 +151,30 @@ class Dashboard:
             "poll_ms": 100 if active else 1000,
         }
 
+    def tools_payload(self) -> dict:
+        """The Tools view: the live registry's catalog plus recent call results.
+
+        The catalog is the registry itself, never a copy; the results are the
+        trajectory's tool events, newest first, bounded — the surface stays a
+        projection of the record.
+        """
+        events, _skipped = self.feed.snapshot(self.settings.home)
+        results = [
+            {
+                "tool": event.get("tool"),
+                "args": event.get("args") or {},
+                "output": str(event.get("output") or "")[:280],
+                "ok": bool(event.get("ok")),
+                "duration_ms": event.get("duration_ms"),
+                "turn_id": event.get("turn_id"),
+                "at": event.get("ts"),
+            }
+            for event in events
+            if event.get("type") == "tool"
+        ]
+        results.reverse()
+        return {"tools": self.agent.tools.schemas(), "results": results[:50]}
+
     def turn_payload(self, turn_id: str, window: str) -> dict | None:
         return turn_detail.detail(
             self.settings.home,
@@ -187,7 +213,36 @@ class Dashboard:
             dict(r)
             for r in conn.execute("SELECT id, happened_at, summary FROM episodes ORDER BY id DESC")
         ]
-        return {"facts": facts, "episodes": episodes, "mirror_path": str(self.settings.mirror_path)}
+        return {
+            "facts": facts,
+            "episodes": episodes,
+            "mirror_path": str(self.settings.mirror_path),
+            "gate": self._gate_status(),
+            "consolidation": self._consolidation_status(conn),
+        }
+
+    def _gate_status(self) -> dict:
+        """Retrieve/skip counts from the recorded trajectory, plus the last call."""
+        events, _skipped = self.feed.snapshot(self.settings.home)
+        decisions = [event for event in events if event.get("type") == "gate"]
+        last = decisions[-1] if decisions else {}
+        return {
+            "retrieve": sum(1 for event in decisions if event.get("decision") == "retrieve"),
+            "skip": sum(1 for event in decisions if event.get("decision") == "skip"),
+            "last_decision": last.get("decision"),
+            "last_reason": last.get("reason"),
+        }
+
+    def _consolidation_status(self, conn) -> dict:
+        from byo.memory import consolidation as consolidation_mod
+
+        events, _skipped = self.feed.snapshot(self.settings.home)
+        runs = [event for event in events if event.get("type") == "consolidation"]
+        return {
+            "pending": len(consolidation_mod.pending_rows(conn)),
+            "threshold": self.settings.consolidate_every,
+            "last_run_at": runs[-1].get("ts") if runs else None,
+        }
 
     def memory_action(self, payload: dict) -> dict:
         action = payload.get("action")
@@ -330,6 +385,8 @@ def make_handler(dash: Dashboard):
                             "current": dash.agent.session.session_id,
                         },
                     )
+                if path == "/api/tools":
+                    return _json(self, 200, dash.tools_payload())
                 if path == "/api/memory":
                     return _json(self, 200, dash.memory())
                 if path == "/api/settings":
@@ -437,7 +494,19 @@ def make_handler(dash: Dashboard):
                 def observer(kind: str, event: dict) -> None:
                     if kind == "text":
                         send("text", event)
-                    elif kind in ("llm", "tool", "gate", "consolidation", "error"):
+                    elif kind in (
+                        "llm",
+                        "tool",
+                        "gate",
+                        "consolidation",
+                        "error",
+                        "gate_start",
+                        "llm_start",
+                        "tool_start",
+                        "context",
+                    ):
+                        # Start frames are additive: they let the dock show a step as
+                        # running before its result exists, matching the map's light.
                         send(kind, event)
 
                 result = dash.agent.respond(

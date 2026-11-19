@@ -26,7 +26,7 @@ Without a key, the agent prints the one variable to set and exits 2.
 
 ```bash
 byo                      # chat in the terminal; drag while it works
-byo dashboard            # http://127.0.0.1:7777 — Overview, Chat, Memory and Observability
+byo dashboard            # http://127.0.0.1:7777 — Overview, Tools, Chat, Memory and Observability
 byo trajectory           # render the newest recorded trajectory
 make eval                # the offline deterministic suite (no key, no network)
 make gate                # the same checks, one line each, non-zero on failure
@@ -37,10 +37,16 @@ The dashboard opens on **Overview**: the runtime map of surfaces, the memory gat
 context, the loop and tools, the reply, the memory stores, the trajectory and spend. It lights a
 part when its step actually starts and keeps it lit for as long as the step runs — a two-second
 model call is a two-second light, not a pulse — and every round and tool call stays countable. From
-the browser or the terminal, the map is a projection of the recorded turn, never a re-enactment. Click a node to open its view;
-click a loop, tool or reply (or a turn in the list) to read one turn's summary, one-axis timeline,
-hotspots and raw record. Evals and release stay command-line tools and are deliberately not on the
+the browser or the terminal, the map is a projection of the recorded turn, never a re-enactment. Click a node to open its view —
+the Tools node opens the Tools view (the six tools the model can call, plus what recent calls produced), the
+memory nodes open the Memory view (the gate's calls, facts, episodes, consolidation); click a loop or reply
+(or a turn in the list) to read one turn's summary, one-axis timeline, hotspots and raw record. Evals and release stay command-line tools and are deliberately not on the
 map.
+
+The chat dock beside the map separates what a live turn is doing: a **thinking** lane for the
+model's own commentary while it works, a **tool call** lane per tool, and a streaming **output**
+lane for the answer. Each lane is tagged with the map component it stands for, and it lights up
+when that component is the one the map is showing as running.
 
 ## What lives where
 
