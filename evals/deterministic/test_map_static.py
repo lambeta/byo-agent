@@ -181,6 +181,8 @@ def test_history_keeps_the_thinking_and_tools_collapsible():
     assert "/api/turn?turn_id=" in main
     assert ".trace" in css and ".trace-step" in css and ".trace-tag" in css
     assert ".trace-code" in css and ".trace-mark" in css
+    # Every tool call folds inside the turn's trace.
+    assert "trace-tool" in render and ".trace-tool" in css
     assert "function formatMs(" in render
     # The pinned live card must not hide the transcript: the old dedupe is gone.
     assert "The pinned live card already shows" not in main

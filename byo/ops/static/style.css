@@ -707,8 +707,8 @@ button[disabled], button[disabled]:hover, button[disabled]:active {
   width: 13px; height: 13px; border: var(--byo-contour-w) solid var(--byo-ink);
   background: var(--byo-panel); font-size: 11px; line-height: 1;
 }
-.trace-mark::before { content: '+'; }
-.trace[open] .trace-mark::before { content: '\2212'; }
+.trace > summary .trace-mark::before { content: '+'; }
+.trace[open] > summary .trace-mark::before { content: '\2212'; }
 .trace-count { color: var(--byo-ink-soft); font-variant-numeric: tabular-nums; }
 .trace-count:empty { display: none; }
 .trace-body {
@@ -741,6 +741,29 @@ button[disabled], button[disabled]:hover, button[disabled]:active {
   margin-top: 3px; white-space: pre-wrap; overflow-wrap: anywhere;
   font-size: var(--byo-text-2); color: var(--byo-ink-soft);
 }
+.trace-tool > summary {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  cursor: pointer; list-style: none; padding: 2px 0;
+  font: 700 var(--byo-text-3) var(--byo-font-mono); color: var(--byo-ink);
+}
+.trace-tool > summary::-webkit-details-marker { display: none; }
+.trace-tool > summary:hover .trace-tool-name {
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.trace-tool > summary:focus-visible {
+  outline: var(--byo-contour-w-strong) solid var(--byo-accent-live); outline-offset: 2px;
+}
+.trace-tool > summary .trace-mark::before { content: '+'; }
+.trace-tool[open] > summary .trace-mark::before { content: '\2212'; }
+.trace-tool > summary .trace-mark { align-self: center; flex: none; }
+.trace-tool-name { color: var(--byo-accent-live); flex: none; }
+.trace-tool > summary .trace-meta { flex: none; }
+.trace-tool[data-failed="true"] .trace-meta { color: var(--byo-accent-bad); }
+.trace-tool-hint {
+  min-width: 0; flex: 1; font-weight: 400; color: var(--byo-ink-soft);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.trace-tool-body { margin-top: 4px; }
 .trace-code {
   margin-top: 4px; padding: 4px 6px; border: var(--byo-contour-w) solid var(--byo-ink);
   border-radius: var(--byo-radius); background: var(--byo-field);

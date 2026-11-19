@@ -345,11 +345,21 @@ function traceHtml(payload) {
     } else if (step.kind === 'tool') {
       const failed = step.ok === false;
       const meta = esc(formatMs(step.duration_ms)) + (failed ? ' · failed' : ' · ok');
-      const body = '<div class="trace-code"><span class="trace-code-label">in</span>' +
-        esc(step.args || '') + '</div>' +
+      const args = String(step.args == null ? '' : step.args);
+      const hint = esc(args.length > 80 ? args.slice(0, 79) + '…' : args);
+      // Every tool call folds on its own inside the turn's trace.
+      const details = '<details class="trace-tool"' + (failed ? ' data-failed="true"' : '') + '>' +
+        '<summary><span class="trace-mark" aria-hidden="true"></span>' +
+        '<span class="trace-tool-name">' + esc(step.tool || '?') + '</span>' +
+        '<span class="trace-tool-hint">' + hint + '</span>' +
+        '<span class="trace-meta">' + meta + '</span></summary>' +
+        '<div class="trace-tool-body">' +
+        '<div class="trace-code"><span class="trace-code-label">in</span>' + esc(args) + '</div>' +
         '<div class="trace-code"><span class="trace-code-label">out</span>' +
-        esc(step.output || '') + '</div>';
-      parts.push(traceStep('tool', 'tool', esc(step.tool || '?'), meta, body));
+        esc(step.output || '') + '</div></div></details>';
+      parts.push('<div class="trace-step" data-kind="tool">' +
+        '<div class="trace-tag">tool</div>' +
+        '<div class="trace-main">' + details + '</div></div>');
     } else if (step.kind === 'error') {
       parts.push(traceStep(
         'error', 'error', esc(step.stage || '?'), '',
