@@ -45,9 +45,13 @@ function render() {
 
 function bubble(message) {
   const me = message.role === 'user';
+  // Replies are Markdown; what the person typed is shown exactly as typed.
+  const body = me
+    ? '<div class="bubble-body">' + esc(message.content) + '</div>'
+    : '<div class="bubble-body md">' + renderMarkdown(message.content) + '</div>';
   return '<div class="bubble' + (me ? ' me' : '') + '">' +
     '<div class="bubble-meta">' + (me ? 'you' : 'byo') + ' · ' + esc(stamp(message.created_at)) + '</div>' +
-    '<div class="bubble-body">' + esc(message.content) + '</div></div>';
+    body + '</div>';
 }
 
 function renderChat() {
@@ -58,7 +62,15 @@ function renderChat() {
   API.get('/api/session?action=history&session_id=' + encodeURIComponent(wanted))
     .then(function (payload) {
       if (state.chatGen !== generation) return;  // a newer load won
-      const messages = payload.messages || [];
+      let messages = payload.messages || [];
+      // The pinned live card already shows this turn's message and reply.
+      const pinned = state.live && state.live.turn_id && !state.viewing;
+      if (pinned && messages.length && messages[messages.length - 1].role === 'assistant') {
+        messages = messages.slice(0, -1);
+        if (messages.length && messages[messages.length - 1].role === 'user') {
+          messages = messages.slice(0, -1);
+        }
+      }
       const past = state.viewing && state.viewing !== state.session;
       history.innerHTML =
         (past ? '<p class="empty">Reading a past session — sending returns to the current chat.</p>' : '') +
@@ -156,12 +168,96 @@ async function refreshMap(window) {
 }
 
 function newLive(message) {
-  return { user_message: message, source: 'dashboard', state: 'live', steps: [], reply: '', receipt: null };
+  return {
+    user_message: message,
+    source: 'dashboard',
+    state: 'live',
+    items: [],
+    reply: '',
+    receipt: null,
+    turn_id: null
+  };
 }
+
+function lastItem(live, type, openOnly) {
+  for (let index = live.items.length - 1; index >= 0; index -= 1) {
+    const item = live.items[index];
+    if (item.type !== type) continue;
+    if (openOnly && !item.live) continue;
+    return item;
+  }
+  return null;
+}
+
+function addItem(live, item) {
+  live.items.push(item);
+  return item;
+}
+
+const LANE_NODE = { llm: 'model', tool: 'tools', gate: 'gate', consolidation: 'consolidation' };
+
+function settleRound(live, payload) {
+  const round = lastItem(live, 'streaming', true);
+  if (!round) return;
+  round.live = false;
+  round.meta = (payload.duration_ms || 0) + ' ms';
+  if (payload.stop_reason === 'tool_use') {
+    round.type = 'thinking';
+    round.title = 'Thinking · round ' + (round.iteration || '?');
+    round.node = 'model';
+  } else {
+    round.type = 'output';
+    round.title = 'Output';
+    round.node = 'reply';
+    if (round.body) live.reply = round.body;
+  }
+}
+
+function closeLive(live) {
+  let output = null;
+  live.items.forEach(function (item) {
+    if (item.type === 'streaming') {
+      item.type = 'output';
+      item.title = 'Output';
+      item.node = 'reply';
+    }
+    if (item.live) item.live = false;
+    if (item.type === 'output') output = item;
+  });
+  if (output) {
+    output.body = live.reply || output.body;
+    output.node = 'reply';
+    output.title = 'Output';
+    return;
+  }
+  if (live.reply) {
+    addItem(live, {
+      type: 'output', node: 'reply', title: 'Output', body: live.reply, live: false, meta: ''
+    });
+  }
+}
+
+function paintLit(nodes) {
+  const host = document.getElementById('chat-live');
+  if (!host) return;
+  let lit = nodes;
+  if (!lit && typeof MapLive !== 'undefined' && MapLive.litNodes) lit = MapLive.litNodes();
+  lit = lit || [];
+  host.querySelectorAll('.lane[data-node]').forEach(function (lane) {
+    const node = lane.getAttribute('data-node');
+    const running = lane.getAttribute('data-open') === 'true' || node === 'reply';
+    lane.classList.toggle('lit', !!node && running && lit.indexOf(node) !== -1);
+  });
+}
+
+document.addEventListener('byo:lit', function (event) {
+  paintLit((event.detail && event.detail.nodes) || []);
+});
 
 function paintLive() {
   const live = document.getElementById('chat-live');
-  if (live) live.innerHTML = state.live ? turnCard(state.live) : '';
+  if (live) live.innerHTML = state.live ? liveCard(state.live) : '';
+  paintLit();
 }
 
 async function send(message) {
@@ -177,22 +273,63 @@ async function send(message) {
   if (onMap) mapSetStatus('sending…');
   await API.stream(message, function (kind, payload) {
     if (!state.live) return;
-    if (kind === 'text') {
-      state.live.reply += payload.delta || '';
-    } else if (kind === 'llm') {
-      state.live.steps.push({ kind: 'llm', iteration: payload.iteration, in: payload.usage ? payload.usage.in : 0,
-        out: payload.usage ? payload.usage.out : 0, model: payload.model, call: payload.stop_reason,
-        duration_ms: payload.duration_ms, ok: true });
-    } else if (kind === 'tool') {
-      state.live.steps.push({ kind: 'tool', tool: payload.tool, args: JSON.stringify(payload.args),
-        output: String(payload.output || '').slice(0, 160), duration_ms: payload.duration_ms, ok: payload.ok });
+    if (kind === 'gate_start') {
+      addItem(state.live, {
+        type: 'gate', node: 'gate', title: 'Memory gate', body: '', pending: 'deciding…', live: true
+      });
     } else if (kind === 'gate') {
+      const gate = lastItem(state.live, 'gate', false);
+      if (gate) {
+        gate.live = false;
+        gate.pending = '';
+        gate.title = 'Memory gate · ' + (payload.decision || '?');
+        gate.body = payload.reason || '';
+      }
       state.live.gate = { decision: payload.decision, reason: payload.reason };
+    } else if (kind === 'llm_start') {
+      addItem(state.live, {
+        type: 'streaming', node: 'model', title: 'Thinking…', body: '', live: true,
+        iteration: payload.iteration, model: payload.model || ''
+      });
+    } else if (kind === 'text') {
+      const round = lastItem(state.live, 'streaming', true) || lastItem(state.live, 'streaming', false);
+      const delta = payload.delta || '';
+      if (round && delta) {
+        round.body += delta;
+        round.title = 'Output';
+      }
+    } else if (kind === 'llm') {
+      settleRound(state.live, payload);
+    } else if (kind === 'tool_start') {
+      addItem(state.live, {
+        type: 'tool', node: 'tools', title: 'Tool call · ' + (payload.tool || '?'),
+        body: '', pending: 'running…', live: true, name: payload.tool, call_id: payload.call_id
+      });
+    } else if (kind === 'tool') {
+      let tool = lastItem(state.live, 'tool', true);
+      if (!tool) {
+        tool = addItem(state.live, {
+          type: 'tool', node: 'tools', title: 'Tool call · ' + (payload.tool || '?'),
+          body: '', live: true, name: payload.tool
+        });
+      }
+      tool.live = false;
+      tool.pending = '';
+      tool.title = 'Tool call · ' + (payload.tool || 'tool') + (payload.ok === false ? ' · failed' : '');
+      tool.body = JSON.stringify(payload.args) + ' → ' + String(payload.output || '').slice(0, 160);
+      tool.meta = (payload.duration_ms || 0) + ' ms';
     } else if (kind === 'consolidation') {
-      state.live.steps.push({ kind: 'memory_write', new_facts: payload.new_facts });
+      addItem(state.live, {
+        type: 'output', node: 'consolidation', title: 'Memory written',
+        body: 'kept ' + (payload.new_facts || 0) + ' fact(s)', live: false, meta: ''
+      });
     } else if (kind === 'error') {
       const message = (payload.error && payload.error.message) || payload.message || 'failed';
-      state.live.steps.push({ kind: 'error', message: message, ok: false });
+      const stage = payload.stage || 'turn';
+      addItem(state.live, {
+        type: 'error', node: LANE_NODE[stage] || '', title: 'Failed · ' + stage,
+        body: message, live: false, meta: ''
+      });
       state.live.state = 'failed';
       if (onMap) mapSetStatus('failed: ' + message, 'bad');
     } else if (kind === 'receipt') {
@@ -201,12 +338,14 @@ async function send(message) {
       state.live.reply = payload.reply || state.live.reply;
       state.live.state = 'complete';
       state.live.turn_id = payload.turn_id;
+      closeLive(state.live);
     }
     paintLive();
     scrollChat();
   });
+  // Keep the finished card (its lanes are the only place the thinking and the tool
+  // calls are readable) and hide its duplicate bubbles from the history list below.
   const finished = state.live;
-  state.live = null;
   paintLive();
   await refresh();
   return finished;
@@ -280,6 +419,8 @@ async function send(message) {
   });
   document.getElementById('chat-sessions').addEventListener('change', function (event) {
     state.viewing = event.target.value;
+    state.live = null;
+    paintLive();
     renderChat();
   });
 })();
@@ -308,7 +449,7 @@ document.getElementById('chat-form').addEventListener('submit', async function (
   const message = input.value.trim();
   if (!message) return;
   input.value = '';
-  input.style.height = 'auto';
+  input.style.height = '';   // fall back to the two-line min-height, never one clipped line
   await send(message);
 });
 

@@ -113,3 +113,51 @@ def test_no_reference_brand_assets_are_copied():
         text = read(name)
         for word in ("waku", "Waku", "InstrumentSans", "Playfair", "waku-mark"):
             assert word not in text, (name, word)
+
+
+def test_the_live_chat_separates_thinking_tools_and_output():
+    script = read("js/main.js")
+    render = read("js/render.js")
+    live = read("js/live.js")
+    for symbol in (
+        "round.type = 'thinking'",
+        "'Tool call · '",
+        "round.type = 'output'",
+        "settleRound",
+        "closeLive",
+    ):
+        assert symbol in script, symbol
+    assert "data-node=" in render and "lane-" in render
+    assert "liveCard" in render and "liveLane" in render
+    for symbol in ("litNodes", "byo:lit", "broadcast"):
+        assert symbol in live, symbol
+    assert "byo:lit" in script and "paintLit" in script
+
+
+def test_replies_are_markdown_but_user_text_is_not():
+    render = read("js/render.js")
+    main = read("js/main.js")
+    css = read("style.css")
+    assert "function renderMarkdown(" in render
+    assert "const text = esc(String(source" in render
+    assert "https?:|mailto:" in render
+    assert "javascript:" not in render
+    assert "renderMarkdown(message.content)" in main
+    assert "esc(message.content)" in main
+    assert ".md pre" in css and ".md code" in css and ".bubble-body.md" in css
+    # Tables, images, nested lists and task lists are part of the subset.
+    assert "function mdTable(" in render and "function mdList(" in render
+    assert "md-table" in render and "<img src=" in render and 'class="task"' in render
+    assert ".md table" in css and ".md img" in css and ".md li.task" in css
+
+
+def test_the_composer_fits_its_wrapped_placeholder():
+    css = read("style.css")
+    main = read("js/main.js")
+    input_block = css[css.index("#chat-input {"):]
+    input_block = input_block[: input_block.index("}")]
+    assert "min-height: calc(2.8em + 22px)" in input_block
+    chatbar = css[css.index(".chatbar {"):]
+    chatbar = chatbar[: chatbar.index("}")]
+    assert "flex: none" in chatbar
+    assert "input.style.height = ''" in main

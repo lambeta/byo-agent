@@ -17,6 +17,7 @@ const MapLive = {
   applied: 0,
   generation: 0,
   liveAt: {},
+  lit: {},
   watching: false,
   pollMs: 1000,
   started: false,
@@ -29,9 +30,11 @@ const MapLive = {
     this.applied = 0;
     this.generation += 1;
     this.liveAt = {};
+    this.lit = {};
     this.watching = false;
     this.pollMs = 1000;
     mapResetNodes();
+    this.broadcast();
     mapSetStatus('Agent idle');
     mapNote('');
     this.onVisibility = function () {
@@ -50,6 +53,7 @@ const MapLive = {
     this.fetching = false;
     this.watching = false;
     this.liveAt = {};
+    this.lit = {};
     if (this.onVisibility) document.removeEventListener('visibilitychange', this.onVisibility);
     this.onVisibility = null;
     mapMarkStale(false);
@@ -145,12 +149,32 @@ const MapLive = {
     }
   },
 
+  litNodes() {
+    const out = [];
+    for (const id in this.lit) {
+      if (Object.prototype.hasOwnProperty.call(this.lit, id) && this.lit[id]) out.push(id);
+    }
+    return out;
+  },
+
+  broadcast() {
+    if (typeof document === 'undefined' || typeof CustomEvent !== 'function') return;
+    document.dispatchEvent(new CustomEvent('byo:lit', { detail: { nodes: this.litNodes() } }));
+  },
+
   applyCue(cue, instant) {
     const generation = this.generation;
     const states = cue.states || {};
     for (const id in states) {
       if (!Object.prototype.hasOwnProperty.call(states, id)) continue;
       const state = states[id];
+      if (id === 'record') {
+        // The trajectory mark is a turn-level indicator, not a step the chat can show.
+      } else if (state === 'live') {
+        this.lit[id] = true;
+      } else {
+        delete this.lit[id];
+      }
       if (instant) {
         mapSetNodeState(id, state);
         continue;
@@ -174,6 +198,7 @@ const MapLive = {
     }
     mapApplyCueEdges(cue.edges || []);
     if (cue.role === 'step' && !instant) mapSetStatus(cue.label);
+    this.broadcast();
   },
 
   settleLater() {
@@ -182,6 +207,8 @@ const MapLive = {
     this.settleTimer = setTimeout(function () {
       if (generation !== MapLive.generation) return;
       mapResetNodes();
+      MapLive.lit = {};
+      MapLive.broadcast();
       mapSetStatus('Agent idle');
       mapNote('');
     }, MAP_LIVE_SETTLE);
