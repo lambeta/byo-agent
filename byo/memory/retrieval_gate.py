@@ -32,7 +32,8 @@ def first_json(text: str) -> dict[str, Any] | None:
         data = json.loads(text[start : end + 1])
     except json.JSONDecodeError:
         return None
-    return data if isinstance(data, dict) else None
+    # A valid JSON slice from "{" to "}" can only be an object.
+    return data
 
 
 def decide(adapter, model: str, message: str, max_tokens: int = 256) -> dict[str, Any]:

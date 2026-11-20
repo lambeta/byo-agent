@@ -38,6 +38,12 @@ def test_gate_fails_open_when_the_model_is_unavailable():
     assert "failed open" in decision["reason"]
 
 
+def test_gate_fails_open_on_malformed_json():
+    decision = decide(script(text("{not json}")), "m", "anything")
+    assert decision["decision"] == "retrieve"
+    assert "unclearly" in decision["reason"]
+
+
 def test_gate_fails_open_on_unparseable_text():
     decision = decide(script(text("I think maybe?")), "m", "anything")
     assert decision["decision"] == "retrieve"

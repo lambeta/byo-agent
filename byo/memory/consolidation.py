@@ -92,8 +92,7 @@ def consolidate(
         data = json.loads(response.text()[start : end + 1])
     except json.JSONDecodeError:
         return None
-    if not isinstance(data, dict):
-        return None
+    # A valid JSON slice from "{" to "}" can only be an object.
 
     kept: list[dict[str, Any]] = []
     for candidate in data.get("facts") or []:

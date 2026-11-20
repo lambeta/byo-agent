@@ -130,3 +130,32 @@ def test_unparseable_answer_keeps_rows(conn):
     facts, episodes = FactStore(conn), EpisodeStore(conn)
     assert consolidate(conn, script(text("no json here")), "m", facts, episodes) is None
     assert len(pending_rows(conn)) == 6
+
+
+def test_nothing_pending_is_a_noop(conn):
+    facts, episodes = FactStore(conn), EpisodeStore(conn)
+    adapter = script(answer({"facts": [], "episode": "should not run"}))
+    assert consolidate(conn, adapter, "m", facts, episodes) is None
+    assert adapter.calls == []
+
+
+def test_malformed_json_answer_keeps_rows(conn):
+    seed(conn)
+    facts, episodes = FactStore(conn), EpisodeStore(conn)
+    assert (
+        consolidate(conn, script(text("{not json}")), "m", facts, episodes) is None
+    )
+    assert len(pending_rows(conn)) == 6
+
+
+def test_non_dict_fact_candidates_are_skipped(conn):
+    seed(conn)
+    facts, episodes = FactStore(conn), EpisodeStore(conn)
+    payload = {
+        "facts": ["junk", 42, {"subject": "alex", "content": "prefers mornings"}],
+        "episode": "",
+    }
+    note = consolidate(conn, script(answer(payload)), "m", facts, episodes)
+    assert note["new_facts"] == 1
+    assert facts.count() == 1
+    assert note["episode"] is None
