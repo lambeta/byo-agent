@@ -8,7 +8,8 @@ from types import SimpleNamespace
 import pytest
 from scripted import script, text, tool_call
 
-from byo.loop.adapters import AnthropicAdapter, OpenAIAdapter, _normalize
+from byo.config import Settings
+from byo.loop.adapters import AnthropicAdapter, OpenAIAdapter, _normalize, build_adapter
 from byo.loop.types import (
     BadResponse,
     Message,
@@ -253,6 +254,14 @@ def test_anthropic_complete_normalizes_sdk_errors():
         AnthropicAdapter(client=FakeAnthropicClient(exc=Down("down"))).complete(request())
 
 
+def test_anthropic_stream_normalizes_sdk_errors():
+    class Down(Exception):
+        status_code = 503
+
+    with pytest.raises(Transport):
+        AnthropicAdapter(client=FakeAnthropicClient(exc=Down("down"))).stream(request())
+
+
 def test_anthropic_stream_yields_deltas_and_returns_final_message():
     client = FakeAnthropicClient(
         message=anthropic_message("one two"), deltas=["one ", "two"]
@@ -328,9 +337,45 @@ def test_openai_stream_rejects_non_json_tool_arguments():
         OpenAIAdapter(client=FakeOpenAIClient(chunks=chunks)).stream(request())
 
 
+def test_openai_complete_maps_text_content():
+    client = FakeOpenAIClient(completion=openai_completion(content="plain text"))
+    response = OpenAIAdapter(client=client).complete(request())
+    assert response.text() == "plain text"
+    assert response.stop_reason == "end_turn"
+
+
 def test_openai_complete_normalizes_sdk_errors():
     class Nope(Exception):
         status_code = 400
 
     with pytest.raises(Refused):
         OpenAIAdapter(client=FakeOpenAIClient(exc=Nope("no"))).complete(request())
+
+
+def test_openai_stream_skips_choiceless_chunks():
+    chunks = [
+        openai_chunk(content="a"),
+        SimpleNamespace(choices=[], usage=None),  # keep-alive chunk carries no choices
+        openai_chunk(content="b"),
+    ]
+    response = OpenAIAdapter(client=FakeOpenAIClient(chunks=chunks)).stream(request())
+    assert response.text() == "ab"
+
+
+def test_openai_stream_normalizes_sdk_errors():
+    class Down(Exception):
+        status_code = 503
+
+    with pytest.raises(Transport):
+        OpenAIAdapter(client=FakeOpenAIClient(exc=Down("down"))).stream(request())
+
+
+def test_build_adapter_picks_provider_and_rejects_unknown():
+    settings = Settings(
+        provider="anthropic", api_key="", base_url="https://anthropic.test"
+    )
+    assert type(build_adapter(settings)).__name__ == "AnthropicAdapter"
+    settings = Settings(provider="openai", api_key="sk-test", base_url="https://openai.test")
+    assert type(build_adapter(settings)).__name__ == "OpenAIAdapter"
+    with pytest.raises(ValueError, match="unknown provider"):
+        build_adapter(Settings(provider="bogus", api_key="", base_url=None))
