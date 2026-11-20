@@ -223,6 +223,32 @@ def test_retry_frame_reaches_the_stream_and_the_dock(settings):
     assert ".lane-retry" in read_static("style.css")
 
 
+def test_gate_start_frame_reaches_the_stream_and_the_dock(settings):
+    adapter = script(
+        text('{"needs_memory": false, "reason": "small talk"}'),
+        text("hello back"),
+    )
+    agent = Agent(settings, adapter=adapter)
+    server = make_server(settings, agent=agent, port=0)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        frames = _sse(_post(server, "/api/chat/stream", {"message": "hello"}))
+        kinds = [kind for kind, _ in frames]
+        assert kinds.index("gate_start") < kinds.index("gate") < kinds.index("llm_start")
+        gate_start = [data for kind, data in frames if kind == "gate_start"][-1]
+        assert gate_start["model"] == settings.effective_small_model()
+        done = [data for kind, data in frames if kind == "done"][-1]
+        assert done["failed"] is False
+        assert done["reply"] == "hello back"
+    finally:
+        server.shutdown()
+        server.server_close()
+        agent.close()
+
+    send = function_body(read_static("js/main.js"), "send")
+    assert "kind === 'gate_start'" in send
+
+
 def test_us2_unexpected_exception_emits_error_without_done(settings):
     agent = Agent(settings, adapter=_ExplodingStream(), memory=None)
     server = make_server(settings, agent=agent, port=0)

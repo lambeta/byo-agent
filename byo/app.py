@@ -97,7 +97,12 @@ class Agent:
 
         try:
             if self.memory is not None:
-                self.trajectory.begin("gate", model=self.settings.effective_small_model())
+                # The dock has a live "deciding" lane for gate_start; the observer must
+                # see the start, not just the recorded trajectory.
+                gate_start = {"model": self.settings.effective_small_model()}
+                self.trajectory.begin("gate", **gate_start)
+                if observer is not None:
+                    observer("gate_start", gate_start)
                 gate = self.memory.gate(message)
                 self.trajectory.record("gate", **gate)
                 if observer is not None:
