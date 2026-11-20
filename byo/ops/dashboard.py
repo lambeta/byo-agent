@@ -699,9 +699,11 @@ def make_handler(dash: Dashboard):
                         "llm_start",
                         "tool_start",
                         "context",
+                        "retry",
                     ):
                         # Start frames are additive: they let the dock show a step as
                         # running before its result exists, matching the map's light.
+                        # A retry frame explains why a model round restarts silently.
                         send(kind, event)
 
                 result = dash.agent.respond(

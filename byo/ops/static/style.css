@@ -640,6 +640,7 @@ button[disabled], button[disabled]:hover, button[disabled]:active {
   letter-spacing: var(--byo-track-wide); font-size: var(--byo-text-3);
 }
 .lane-thinking { border-style: dashed; }
+.lane-retry { border-style: dashed; }
 .lane-thinking .lane-body { color: var(--byo-ink-soft); }
 .lane-tool { border-left-width: var(--byo-contour-w-strong); }
 .lane-error { border-color: var(--byo-accent-bad); box-shadow: var(--byo-shadow-row); }

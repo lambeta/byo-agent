@@ -467,6 +467,13 @@ async function send(message) {
           type: 'output', node: 'consolidation', title: 'Memory written',
           body: 'kept ' + (payload.new_facts || 0) + ' fact(s)', live: false, meta: ''
         });
+      } else if (kind === 'retry') {
+        // The model round is being attempted a second time; say why it restarted.
+        addItem(state.live, {
+          type: 'retry', node: 'model', title: 'Retrying · transport hiccup',
+          body: 'The first attempt failed on the network; trying again once.',
+          live: false, meta: ''
+        });
       } else if (kind === 'error') {
         const message = (payload.error && payload.error.message) || payload.message || 'failed';
         const stage = payload.stage || 'turn';

@@ -16,7 +16,7 @@ import threading
 import urllib.request
 from pathlib import Path
 
-from scripted import script, text, tool_call
+from scripted import error, script, text, tool_call
 
 from byo.app import Agent
 from byo.loop.types import Capabilities, Refused
@@ -199,6 +199,28 @@ def test_us2_failed_stream_keeps_partial_text(settings):
         server.shutdown()
         server.server_close()
         agent.close()
+
+
+def test_retry_frame_reaches_the_stream_and_the_dock(settings):
+    adapter = script(error("Transport"), text("recovered"))
+    agent = Agent(settings, adapter=adapter, memory=None)
+    server = make_server(settings, agent=agent, port=0)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        frames = _sse(_post(server, "/api/chat/stream", {"message": "hello"}))
+        kinds = [kind for kind, _ in frames]
+        assert kinds.index("llm_start") < kinds.index("retry") < kinds.index("llm")
+        done = [data for kind, data in frames if kind == "done"][-1]
+        assert done["failed"] is False
+        assert done["reply"] == "recovered"
+    finally:
+        server.shutdown()
+        server.server_close()
+        agent.close()
+
+    send = function_body(read_static("js/main.js"), "send")
+    assert "kind === 'retry'" in send
+    assert ".lane-retry" in read_static("style.css")
 
 
 def test_us2_unexpected_exception_emits_error_without_done(settings):
