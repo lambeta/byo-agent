@@ -17,7 +17,9 @@ MARKER = "\n[…shortened]"
 
 
 def shrink(messages: list[Message], cap: int = CAP) -> None:
-    for index, message in enumerate(messages):
+    # The last message is the fresh tool output the next request sends for the
+    # first time: the model has not read it yet, so it goes out in full.
+    for index, message in enumerate(messages[:-1]):
         if not any(isinstance(b, ToolResultBlock) and len(b.content) > cap for b in message.blocks):
             continue
         blocks = []
