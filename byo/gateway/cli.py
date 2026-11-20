@@ -45,6 +45,9 @@ def step_observer(out: Console | None = None) -> Callable[[str, dict], None]:
             decision = escape(str(event.get("decision")))
             reason = escape(str(event.get("reason", "")))
             out.print(f"  [dim]gate · {decision} — {reason}[/dim]")
+        elif kind == "retry":
+            model = escape(str(event.get("model", "?")))
+            out.print(f"  [dim]retry · {model} · transport hiccup[/dim]")
         elif kind == "llm" and event.get("kind") == "final":
             out.print("  [dim]llm · final answer after the step limit[/dim]")
         elif kind == "error":

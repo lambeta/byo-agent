@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from scripted import script, text, tool_call
+from scripted import error, script, text, tool_call
 
 from byo.config import load_settings
 from byo.gateway.cli import main
@@ -76,3 +76,27 @@ def test_a_turn_prints_steps_before_the_reply(home, capsys):
     assert main(agent=agent, settings=settings, reader=reader) == 0
     out = capsys.readouterr().out
     assert out.index("tool · list_events") < out.index("Nothing booked.")
+
+
+def test_a_transport_retry_is_announced_before_the_reply(home, capsys):
+    from byo.app import Agent
+
+    settings = load_settings(env={}, home=home)
+    settings.ensure_home()
+    agent = Agent(
+        settings,
+        adapter=script(error("Transport"), text("Back online.")),
+        memory=None,
+    )
+    lines = iter(["hello"])
+
+    def reader(prompt: str) -> str:
+        try:
+            return next(lines)
+        except StopIteration:
+            raise EOFError from None
+
+    assert main(agent=agent, settings=settings, reader=reader) == 0
+    out = capsys.readouterr().out
+    assert "retry" in out and "transport hiccup" in out
+    assert out.index("transport hiccup") < out.index("Back online.")
