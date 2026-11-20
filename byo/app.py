@@ -150,11 +150,18 @@ class Agent:
             if self.memory is not None:
                 note = None
                 try:
+
+                    def on_consolidation_start(pending: int) -> None:
+                        # The dock has a live "writing" lane for consolidation_start; the
+                        # observer must see the start, not just the recorded trajectory.
+                        event = {"pending": pending}
+                        self.trajectory.begin("consolidation", **event)
+                        if observer is not None:
+                            observer("consolidation_start", event)
+
                     note = self.memory.maybe_consolidate(
                         recalled=session.recalled,
-                        on_start=lambda pending: self.trajectory.begin(
-                            "consolidation", pending=pending
-                        ),
+                        on_start=on_consolidation_start,
                     )
                 except Exception as exc:  # noqa: BLE001 - consolidation never fails a turn
                     failure = {

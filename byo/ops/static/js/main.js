@@ -462,11 +462,22 @@ async function send(message) {
         tool.title = 'Tool call · ' + (payload.tool || 'tool') + (payload.ok === false ? ' · failed' : '');
         tool.body = JSON.stringify(payload.args) + ' → ' + String(payload.output || '').slice(0, 160);
         tool.meta = formatMs(payload.duration_ms);
-      } else if (kind === 'consolidation') {
+      } else if (kind === 'consolidation_start') {
         addItem(state.live, {
-          type: 'output', node: 'consolidation', title: 'Memory written',
-          body: 'kept ' + (payload.new_facts || 0) + ' fact(s)', live: false, meta: ''
+          type: 'consolidation', node: 'consolidation', title: 'Memory write', body: '',
+          pending: 'writing…', live: true
         });
+      } else if (kind === 'consolidation') {
+        // Settle the lane the start frame opened; a distinct lane type keeps closeLive
+        // from mistaking it for the reply's output lane and overwriting it.
+        const lane = lastItem(state.live, 'consolidation', true) || addItem(state.live, {
+          type: 'consolidation', node: 'consolidation', title: 'Memory write', body: '',
+          pending: 'writing…', live: true
+        });
+        lane.live = false;
+        lane.pending = '';
+        lane.title = 'Memory written';
+        lane.body = 'kept ' + (payload.new_facts || 0) + ' fact(s)';
       } else if (kind === 'retry') {
         // The model round is being attempted a second time; say why it restarted.
         addItem(state.live, {

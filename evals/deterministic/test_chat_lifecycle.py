@@ -249,6 +249,42 @@ def test_gate_start_frame_reaches_the_stream_and_the_dock(settings):
     assert "kind === 'gate_start'" in send
 
 
+def test_consolidation_start_frame_reaches_the_stream_and_the_dock(settings):
+    settings.consolidate_every = 1
+    adapter = script(
+        text('{"needs_memory": false, "reason": "small talk"}'),
+        text("noted"),
+        text(
+            '{"facts": [{"subject": "alex", "content": "likes fridays"}], '
+            '"episode": "planned friday"}'
+        ),
+    )
+    agent = Agent(settings, adapter=adapter)
+    server = make_server(settings, agent=agent, port=0)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        frames = _sse(_post(server, "/api/chat/stream", {"message": "alex likes fridays"}))
+        kinds = [kind for kind, _ in frames]
+        assert (
+            kinds.index("llm")
+            < kinds.index("consolidation_start")
+            < kinds.index("consolidation")
+            < kinds.index("done")
+        )
+        started = [data for kind, data in frames if kind == "consolidation_start"][-1]
+        assert started["pending"] >= 1
+        done = [data for kind, data in frames if kind == "done"][-1]
+        assert done["failed"] is False
+        assert done["reply"] == "noted"
+    finally:
+        server.shutdown()
+        server.server_close()
+        agent.close()
+
+    send = function_body(read_static("js/main.js"), "send")
+    assert "kind === 'consolidation_start'" in send
+
+
 def test_us2_unexpected_exception_emits_error_without_done(settings):
     agent = Agent(settings, adapter=_ExplodingStream(), memory=None)
     server = make_server(settings, agent=agent, port=0)

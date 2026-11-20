@@ -694,6 +694,7 @@ def make_handler(dash: Dashboard):
                         "tool",
                         "gate",
                         "consolidation",
+                        "consolidation_start",
                         "error",
                         "gate_start",
                         "llm_start",
