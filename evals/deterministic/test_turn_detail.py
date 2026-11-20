@@ -197,6 +197,38 @@ def test_unknown_id_returns_none(settings, conn):
     assert detail(settings.home, "t_missing", "7d") is None
 
 
+def test_an_invalid_window_is_rejected(settings, conn):
+    import pytest
+
+    write(settings, events())
+    with pytest.raises(ValueError, match="window must be today, 7d or all"):
+        detail(settings.home, "t_detail", "bogus")
+
+
+def test_an_unknown_gate_decision_reads_as_memory_decision(settings, conn):
+    records = events()
+    records[1]["decision"] = "unclear"
+    write(settings, records)
+    payload = detail(settings.home, "t_detail", "7d")
+    assert payload["summary"].startswith("question → memory decision")
+
+
+def test_an_unparseable_cost_says_cost_not_recorded(settings, conn):
+    records = events()
+    records[-2]["total_usd"] = "lots"
+    write(settings, records)
+    payload = detail(settings.home, "t_detail", "7d")
+    assert payload["summary"].endswith("cost not recorded")
+
+
+def test_a_turn_without_timestamps_is_not_timed(settings, conn):
+    records = events()
+    del records[0]["ts"]
+    write(settings, records)
+    payload = detail(settings.home, "t_detail", "7d")
+    assert "not timed" in payload["summary"]
+
+
 def test_pre_feature_fixture_projects_identically(settings, conn):
     fixture = (
         Path(__file__).resolve().parents[2]

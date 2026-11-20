@@ -31,3 +31,13 @@ def test_permission_denied_means_alive(monkeypatch):
 
     monkeypatch.setattr(module.os, "kill", denied)
     assert alive(1234) is True
+
+
+def test_a_generic_os_error_means_not_alive(monkeypatch):
+    import byo.ops.liveness as module
+
+    def invalid(pid, signal):
+        raise OSError("invalid argument")
+
+    monkeypatch.setattr(module.os, "kill", invalid)
+    assert alive(1234) is False

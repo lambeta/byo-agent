@@ -161,3 +161,48 @@ def test_llm_steps_keep_the_model_text(settings):
     llm = [step for step in payload["turns"][0]["steps"] if step["kind"] == "llm"][0]
     assert llm["text"] == "hello there"
     agent.close()
+
+
+def test_read_events_counts_bad_lines_and_skips_blank_ones(settings):
+    settings.trajectories_dir.mkdir(parents=True, exist_ok=True)
+    path = settings.trajectories_dir / "2026-11-18.jsonl"
+    path.write_text(
+        "\n"
+        "not json\n"
+        '["not", "an", "object"]\n'
+        '{"type": "turn_start", "turn_id": "t_ok", "ts": "2026-11-18T10:00:00.000+08:00"}\n',
+        encoding="utf-8",
+    )
+    events, skipped = read_events(settings.home, "all")
+    assert [event["turn_id"] for event in events] == ["t_ok"]
+    assert skipped == 2
+
+
+def test_read_events_survives_an_unreadable_file(settings):
+    settings.trajectories_dir.mkdir(parents=True, exist_ok=True)
+    # A directory named like a day file makes read_text raise IsADirectoryError,
+    # an OSError the reader must skip over instead of dying.
+    (settings.trajectories_dir / "2026-11-17.jsonl").mkdir()
+    write(settings, sample())
+    events, skipped = read_events(settings.home, "all")
+    assert [event["turn_id"] for event in events] == ["t_abc"] * len(sample())
+    assert skipped == 0
+
+
+def test_a_consolidation_event_projects_as_a_memory_write_step(settings):
+    events = sample()
+    events.insert(
+        3,
+        {
+            "type": "consolidation",
+            "turn_id": "t_abc",
+            "new_facts": 2,
+            "kept": [{"subject": "alex", "content": "prefers mornings"}],
+            "ts": "2026-11-18T10:00:00.900+08:00",
+        },
+    )
+    write(settings, events)
+    payload = build_turn(group_turns(read_events(settings.home, "all")[0])[0])
+    step = next(item for item in payload["steps"] if item["kind"] == "memory_write")
+    assert step["new_facts"] == 2
+    assert step["kept"] == [{"subject": "alex", "content": "prefers mornings"}]

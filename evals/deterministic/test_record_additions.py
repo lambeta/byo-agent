@@ -31,6 +31,17 @@ def kinds(events):
     return [event["type"] for event in events]
 
 
+def test_a_blank_message_is_a_noop(settings):
+    adapter = script(text("never used"))
+    agent = Agent(settings, adapter=adapter, memory=None)
+    result = agent.respond("   ")
+    assert result.reply == ""
+    assert result.messages == []
+    assert adapter.calls == []
+    assert list(settings.trajectories_dir.glob("*.jsonl")) == []
+    agent.close()
+
+
 def test_start_records_bracket_each_step(settings):
     agent = Agent(
         settings,

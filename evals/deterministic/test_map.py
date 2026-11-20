@@ -213,3 +213,30 @@ def test_an_unfinished_turn_is_active_with_its_events(settings, conn):
     assert payload["active"]["turn"]["state"] == "unfinished"
     assert payload["active"]["events"][0]["type"] == "turn_start"
     assert payload["cursor"] == 1
+
+
+def test_an_invalid_window_is_rejected(settings, conn):
+    import pytest
+
+    with pytest.raises(ValueError, match="window must be today, 7d or all"):
+        map_ops.payload(settings.home, conn, settings, "bogus")
+
+
+def test_an_unfinished_turn_without_a_turn_id_is_never_active(settings, conn):
+    # turn_id missing groups as ""; _turn_pid finds no turn_start with id "",
+    # so there is no pid to check and the turn can never be shown as running.
+    events = [
+        {
+            "type": "turn_start",
+            "user_message": "anonymous",
+            "source": "cli",
+            "session_id": "default",
+            "ts": "2026-11-18T10:00:00.000+08:00",
+            "pid": os.getpid(),
+        }
+    ]
+    write(settings, events)
+    payload = map_ops.payload(
+        settings.home, conn, settings, "7d", memory_enabled=True, tool_count=6
+    )
+    assert payload["active"] is None

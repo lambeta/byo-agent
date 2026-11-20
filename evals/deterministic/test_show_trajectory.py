@@ -74,6 +74,33 @@ def test_start_markers_render_readably(settings):
     assert "memory start · 6 pending" in text
 
 
+def test_consolidation_and_error_lines_render_readably(settings):
+    settings.trajectories_dir.mkdir(parents=True, exist_ok=True)
+    path = settings.trajectories_dir / "2026-11-18.jsonl"
+    path.write_text(
+        '{"type": "consolidation", "turn_id": "t_1", "new_facts": 2, '
+        '"ts": "2026-11-18T10:00:00.000+08:00"}\n'
+        "\n"
+        '["not", "an", "object"]\n'
+        '{"type": "error", "turn_id": "t_1", "stage": "llm", "message": "nope", '
+        '"ts": "2026-11-18T10:00:01.000+08:00"}\n',
+        encoding="utf-8",
+    )
+    out, buffer = console()
+    assert render(path, out) == 2
+    text = buffer.getvalue()
+    assert "memory · consolidated 2 fact(s)" in text
+    assert "Skipping non-object JSON on line 3." in text
+    assert "error · llm · nope" in text
+
+
+def test_render_reports_a_missing_file(settings):
+    out, buffer = console()
+    missing = settings.trajectories_dir / "nope.jsonl"
+    assert render(missing, out) == 0
+    assert "No trajectory at" in buffer.getvalue()
+
+
 def test_unknown_event_renders_generically(settings):
     settings.trajectories_dir.mkdir(parents=True, exist_ok=True)
     path = settings.trajectories_dir / "2026-11-18.jsonl"

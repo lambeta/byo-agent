@@ -112,9 +112,13 @@ def test_a_consolidation_failure_never_fails_the_turn(settings, conn):
     adapter = script(gate, text("the reply"))
     memory = FailingMemory(conn, settings, adapter)
     agent = Agent(settings, adapter=adapter, conn=conn, memory=memory)
-    result = agent.respond("hello")
+    observed = []
+    result = agent.respond("hello", observer=lambda kind, payload: observed.append(kind))
     assert result.reply == "the reply"
     assert result.error == ""
+    # The live observer sees the same consolidation error the trajectory records,
+    # so the dashboard dock can show it during the turn instead of afterwards.
+    assert "error" in observed
     events = agent.trajectory.events
     error = next(item for item in events if item["type"] == "error")
     assert error["stage"] == "consolidation"
