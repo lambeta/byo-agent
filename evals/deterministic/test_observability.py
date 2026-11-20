@@ -86,6 +86,24 @@ def test_steps_and_state(settings):
     assert payload["receipt"]["usd"] == 0.0006
 
 
+def test_a_retry_marker_is_not_a_step(settings):
+    events = sample()
+    events.insert(
+        2,
+        {
+            "type": "retry",
+            "turn_id": "t_abc",
+            "stage": "llm",
+            "model": "claude-sonnet-4-5",
+            "ts": "2026-11-18T10:00:00.900+08:00",
+        },
+    )
+    write(settings, events)
+    payload = build_turn(group_turns(read_events(settings.home, "all")[0])[0])
+    assert payload["state"] == "complete"
+    assert [step["kind"] for step in payload["steps"]] == ["gate", "llm", "tool"]
+
+
 def test_failure_state(settings):
     events = sample()
     events.insert(

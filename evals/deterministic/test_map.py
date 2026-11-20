@@ -123,6 +123,7 @@ def test_event_map_covers_the_recorded_vocabulary():
         "context",
         "llm_start",
         "llm",
+        "retry",
         "tool_start",
         "tool",
         "consolidation_start",
@@ -134,6 +135,7 @@ def test_event_map_covers_the_recorded_vocabulary():
     # A model call no longer lights the working context: the context has its own mark.
     assert "context" not in event_map["llm"]["nodes"]
     assert event_map["llm_start"]["nodes"] == ["model"]
+    assert event_map["retry"]["nodes"] == ["model"]
     assert event_map["turn_start"]["mark"] == "record"
     nodes = {node["id"] for node in data["nodes"]}
     edges = {edge["id"] for edge in data["edges"]}

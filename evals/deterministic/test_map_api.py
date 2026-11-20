@@ -128,6 +128,7 @@ def test_map_payload_contract(server):
         "context",
         "llm_start",
         "llm",
+        "retry",
         "tool_start",
         "tool",
         "consolidation_start",

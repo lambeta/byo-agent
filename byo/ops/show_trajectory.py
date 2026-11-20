@@ -72,6 +72,8 @@ def summary(event: dict) -> str:
         iteration = event.get("iteration", "?")
         model = event.get("model", "?")
         return f"llm start · {label} · iteration {iteration} · {model}"
+    if kind == "retry":
+        return f"retry · {event.get('model', '?')} · transport hiccup"
     if kind == "tool_start":
         return f"tool start · {event.get('tool', '?')}"
     if kind == "context":

@@ -96,10 +96,10 @@ def group_turns(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return turns
 
 
-# Start markers and the context mark describe when a step ran, not a step of its own:
-# they must never appear as a turn step or add to spend.
+# Start markers, the context mark and the retry mark describe when a step ran (or
+# restarted), not a step of its own: they must never appear as a turn step or add to spend.
 NOT_STEPS = frozenset(
-    {"gate_start", "llm_start", "tool_start", "consolidation_start", "context"}
+    {"gate_start", "llm_start", "tool_start", "consolidation_start", "context", "retry"}
 )
 
 

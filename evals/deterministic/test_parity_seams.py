@@ -66,6 +66,7 @@ def test_trajectory_vocabulary(settings):
         "tool_start",
         "consolidation_start",
         "context",
+        "retry",
     }
     assert {"llm_start", "tool_start"} <= set(kinds)
     agent.close()

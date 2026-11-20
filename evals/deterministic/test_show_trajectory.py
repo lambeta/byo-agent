@@ -35,6 +35,19 @@ def test_render_prints_the_turn_and_skips_a_bad_line(settings, tmp_path):
     assert "tool · list_events" in text
 
 
+def test_a_retry_renders_readably(settings):
+    settings.trajectories_dir.mkdir(parents=True, exist_ok=True)
+    path = settings.trajectories_dir / "2026-11-18.jsonl"
+    path.write_text(
+        '{"type": "retry", "turn_id": "t_1", "stage": "llm", "model": "big", '
+        '"ts": "2026-11-18T10:00:00.500+08:00"}\n',
+        encoding="utf-8",
+    )
+    out, buffer = console()
+    assert render(path, out) == 1
+    assert "retry · big · transport hiccup" in buffer.getvalue()
+
+
 def test_start_markers_render_readably(settings):
     settings.trajectories_dir.mkdir(parents=True, exist_ok=True)
     path = settings.trajectories_dir / "2026-11-18.jsonl"

@@ -177,6 +177,9 @@ EVENT_MAP: dict[str, dict[str, Any]] = {
         "nodes": ["model"], "edges": [],
         "label": "model answered", "final_label": "final answer",
     },
+    "retry": {
+        "nodes": ["model"], "edges": [], "label": "model retry",
+    },
     "tool_start": {
         "nodes": ["tools"], "edges": ["e-model-tools"], "label": "tool runs",
     },
