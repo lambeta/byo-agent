@@ -310,8 +310,6 @@ class Dashboard:
 
     def _repair_mirror(self) -> list[dict]:
         """One retry for a pending mirror; keeps the marker when it fails again."""
-        if self.agent.memory is None:
-            return []
         try:
             self.agent.memory.rewrite_mirror()
         except Exception:  # noqa: BLE001 - keep serving the store and the warning

@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import http.client
 import json
+import os
+import socket
+import subprocess
+import sys
 import threading
 import time
 import urllib.error
@@ -825,3 +830,220 @@ def test_history_points_at_the_turn_so_a_trace_can_be_loaded(server):
     assistant = [row for row in payload["messages"] if row["role"] == "assistant"]
     assert assistant, "the turn must be in the transcript"
     assert assistant[0]["turn_id"].startswith("t_")
+
+
+def raw_call(server, path, body: bytes):
+    """POST a raw byte body, returning (status, parsed) even for failures."""
+    host, port = server.server_address
+    request = urllib.request.Request(
+        f"http://{host}:{port}{path}",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request) as response:
+            return response.status, json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read())
+
+
+def test_settings_payload_reads_and_saves_the_env_file(server, settings):
+    payload = json.loads(call(server, "/api/settings"))
+    assert payload["provider"] == settings.provider
+    assert payload["model"] == settings.effective_model()
+    status, _ = status_call(server, "/api/settings", {"provider": "openai", "model": "gpt-test"})
+    assert status == 200
+    lines = settings.dotenv_path.read_text(encoding="utf-8").splitlines()
+    assert "BYO_PROVIDER=openai" in lines
+    assert "BYO_MODEL=gpt-test" in lines
+
+
+def test_memory_action_must_be_add_edit_or_forget(server):
+    status, payload = status_call(server, "/api/memory", {"action": "polish"})
+    assert status == 400
+    assert payload["error"]["code"] == "bad_request"
+
+
+def test_memory_edit_with_a_non_numeric_id_is_a_404(server, settings):
+    status, payload = status_call(
+        server, "/api/memory", {"action": "edit", "id": "abc", "subject": "s", "content": "c"}
+    )
+    assert status == 404
+    assert payload["error"]["code"] == "fact_not_found"
+    changes = memory_changes(settings)
+    assert changes[-1]["outcome"] == "refused"
+    assert changes[-1]["code"] == "fact_not_found"
+
+
+def test_memory_forget_with_a_non_numeric_id_is_a_400(server):
+    status, payload = status_call(server, "/api/memory", {"action": "forget", "id": "abc"})
+    assert status == 400
+    assert payload["error"]["code"] == "bad_request"
+
+
+def test_a_non_object_body_is_a_400(server):
+    status, payload = raw_call(server, "/api/chat", b"[1, 2]")
+    assert status == 400
+    assert "object" in payload["error"]["message"]
+
+
+def test_a_huge_body_is_a_413(server):
+    from byo.ops.dashboard import MAX_BODY
+
+    # The server rejects on the declared length without reading the body, so a
+    # normal client library dies on a broken pipe; speak raw HTTP instead.
+    host, port = server.server_address
+    sock = socket.create_connection((host, port))
+    sock.sendall(
+        (
+            f"POST /api/chat HTTP/1.1\r\nHost: {host}:{port}\r\n"
+            f"Content-Length: {MAX_BODY + 1}\r\nConnection: close\r\n\r\n"
+        ).encode()
+    )
+    response = b""
+    while True:
+        chunk = sock.recv(4096)
+        if not chunk:
+            break
+        response += chunk
+    sock.close()
+    assert int(response.split(b" ", 2)[1]) == 413
+
+
+def test_an_unknown_post_route_is_a_404(server):
+    status, payload = status_call(server, "/api/nope", {})
+    assert status == 404
+    assert payload["error"]["code"] == "not_found"
+
+
+def test_a_missing_static_asset_and_a_traversal_attempt_are_404s(server):
+    status, _ = status_call(server, "/static/nope.css")
+    assert status == 404
+    # http.client sends the path verbatim; urllib would normalize the '..' away.
+    host, port = server.server_address
+    connection = http.client.HTTPConnection(host, port)
+    connection.request("GET", "/static/..%2Fsecret.txt")
+    response = connection.getresponse()
+    response.read()
+    connection.close()
+    assert response.status == 404
+
+
+def test_chat_and_stream_require_a_message(server):
+    for path in ("/api/chat", "/api/chat/stream"):
+        status, payload = status_call(server, path, {})
+        assert status == 400
+        assert payload["error"]["message"] == "message is required"
+
+
+def test_a_second_stream_turn_is_a_409(server):
+    server.dashboard.lock.acquire()
+    try:
+        status, payload = status_call(server, "/api/chat/stream", {"message": "hi"})
+    finally:
+        server.dashboard.lock.release()
+    assert status == 409
+    assert payload["error"]["code"] == "conflict"
+
+
+def test_history_treats_unparseable_meta_as_empty(server):
+    agent = server.dashboard.agent
+    agent.conn.execute(
+        "INSERT INTO chat_log (role, content, session_id, meta) "
+        "VALUES ('assistant', 'legacy', 'default', '{oops')"
+    )
+    agent.conn.commit()
+    payload = json.loads(call(server, "/api/session?action=history&session_id=default"))
+    row = next(m for m in payload["messages"] if m["content"] == "legacy")
+    assert row["turn_id"] == ""
+    assert row["state"] == "complete"
+    assert row["partial"] == ""
+
+
+def test_a_read_failure_is_a_500_and_the_server_survives(server, monkeypatch):
+    def boom():
+        raise RuntimeError("feed exploded")
+
+    monkeypatch.setattr(server.dashboard, "data", boom)
+    status, payload = status_call(server, "/api/data")
+    assert status == 500
+    assert payload["error"]["code"] == "server_error"
+    assert json.loads(call(server, "/api/health"))["ok"] is True
+
+
+def test_a_committed_change_survives_a_failed_trace_write(settings, monkeypatch):
+    srv = make_memory_server(settings)
+    trajectory = srv.dashboard.agent.trajectory
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(trajectory, "record_activity", boom)
+    try:
+        status, payload = status_call(
+            srv, "/api/memory", {"action": "add", "subject": "tea", "content": "green over black"}
+        )
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert status == 200
+    assert payload["ok"] is True
+    assert payload["fact"]["content"] == "green over black"
+    assert any(item["code"] == "trace_write_failed" for item in payload["warnings"])
+    assert any(item["code"] == "trace_write_failed" for item in payload["memory"]["warnings"])
+
+
+def test_a_failed_mirror_repair_keeps_the_marker_and_the_warning(settings, monkeypatch):
+    srv = make_memory_server(settings)
+    memory = srv.dashboard.agent.memory
+
+    def boom():
+        raise OSError("disk full")
+
+    monkeypatch.setattr(memory, "rewrite_mirror", boom)
+    try:
+        srv.dashboard._mirror_marker().write_text("mirror rewrite failed\n", encoding="utf-8")
+        payload = json.loads(call(srv, "/api/memory"))
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert any(item["code"] == "mirror_write_failed" for item in payload["warnings"])
+    assert srv.dashboard._mirror_pending()
+
+
+def clean_env(tmp_path, **overrides):
+    env = {"PATH": os.environ["PATH"], "BYO_HOME": str(tmp_path), "BYO_API_KEY": ""}
+    env.update(overrides)
+    return env
+
+
+def test_dashboard_main_reports_a_missing_key(tmp_path):
+    run = subprocess.run(
+        [sys.executable, "-m", "byo.ops.dashboard"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=clean_env(tmp_path),
+    )
+    assert run.returncode == 2
+    assert "BYO_API_KEY" in run.stdout
+
+
+def test_dashboard_main_reports_a_busy_port(tmp_path):
+    blocker = socket.socket()
+    blocker.bind(("127.0.0.1", 0))
+    blocker.listen()
+    port = blocker.getsockname()[1]
+    try:
+        run = subprocess.run(
+            [sys.executable, "-m", "byo.ops.dashboard"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=clean_env(tmp_path, BYO_API_KEY="k", BYO_PORT=str(port)),
+        )
+    finally:
+        blocker.close()
+    assert run.returncode == 3
+    assert "BYO_PORT" in run.stdout
