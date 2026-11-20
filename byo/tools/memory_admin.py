@@ -32,6 +32,7 @@ def make_tools(conn, settings, memory) -> list[Tool]:
                 return "No facts yet."
             return "\n".join(f"{row['id']} · [{row['subject']}] {row['content']}" for row in rows)
         if action == "edit":
+            subject, content = subject.strip(), content.strip()
             if id is None or not subject or not content:
                 raise ValueError("edit needs id, subject and content")
             if not memory.facts.update(int(id), subject, content):
