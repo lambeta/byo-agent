@@ -40,6 +40,7 @@ class Agent:
         conn=None,
         memory=AUTO,
         weather_client=None,
+        weather_clock=None,
     ):
         self.settings = settings or load_settings()
         self.settings.ensure_home()
@@ -51,7 +52,11 @@ class Agent:
             memory = Memory(self.conn, self.settings, self.adapter)
         self.memory = memory
         self.tools = build_registry(
-            self.conn, self.settings, memory=memory, weather_client=weather_client
+            self.conn,
+            self.settings,
+            memory=memory,
+            weather_client=weather_client,
+            weather_clock=weather_clock,
         )
         self.session = Session(self.settings, memory=memory)
         self.trajectory = Trajectory(self.settings)

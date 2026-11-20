@@ -90,13 +90,15 @@ def failure_text(failure: WeatherFailure) -> str:
     return f"Error: {failure.category}: {failure.message}"
 
 
-def make_tools(conn, settings, client=None) -> list[Tool]:
+def make_tools(conn, settings, client=None, clock=None) -> list[Tool]:
     if not getattr(settings, "weather_enabled", True):
         return []
     transport = client if client is not None else HttpJsonClient(
         timeout=settings.weather_timeout_seconds
     )
-    service = WeatherService(transport, default_place=settings.weather_default_place)
+    service = WeatherService(
+        transport, clock=clock, default_place=settings.weather_default_place
+    )
 
     def query_weather(
         place: str = "",

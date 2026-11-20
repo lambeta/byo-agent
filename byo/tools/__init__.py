@@ -6,7 +6,9 @@ from byo.tools import calendar, memory_admin, messages, notes, weather
 from byo.tools.registry import ToolRegistry
 
 
-def build_registry(conn, settings, memory=None, weather_client=None) -> ToolRegistry:
+def build_registry(
+    conn, settings, memory=None, weather_client=None, weather_clock=None
+) -> ToolRegistry:
     registry = ToolRegistry()
     for tool in calendar.make_tools(conn, settings):
         registry.register(tool)
@@ -14,7 +16,7 @@ def build_registry(conn, settings, memory=None, weather_client=None) -> ToolRegi
         registry.register(tool)
     for tool in messages.make_tools(conn, settings):
         registry.register(tool)
-    for tool in weather.make_tools(conn, settings, client=weather_client):
+    for tool in weather.make_tools(conn, settings, client=weather_client, clock=weather_clock):
         registry.register(tool)
     if memory is not None:
         for tool in memory_admin.make_tools(conn, settings, memory):

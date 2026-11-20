@@ -7,7 +7,7 @@ import threading
 import urllib.request
 
 from scripted import script, text, tool_call
-from weather_fakes import FakeClient, load_fixture
+from weather_fakes import FakeClient, FakeClock, load_fixture
 
 from byo.app import Agent
 from byo.config import load_settings
@@ -22,7 +22,7 @@ def weather_registry(settings, conn, geocode="geocode-shanghai", forecast="forec
         load_fixture(geocode) if geocode else None,
         load_fixture(forecast) if forecast else None,
     )
-    return build_registry(conn, settings, weather_client=client), client
+    return build_registry(conn, settings, weather_client=client, weather_clock=FakeClock()), client
 
 
 def run(settings, conn, args, **kwargs):
@@ -108,7 +108,9 @@ def test_an_empty_place_uses_the_default_place_setting(settings, conn):
         env={"BYO_HOME": str(settings.home), "BYO_WEATHER_DEFAULT_PLACE": "Shanghai"},
         home=settings.home,
     )
-    registry = build_registry(conn, configured, weather_client=client)
+    registry = build_registry(
+        conn, configured, weather_client=client, weather_clock=FakeClock()
+    )
     output = registry.execute("query_weather", {"place": ""})
     assert output.startswith("Weather for Shanghai,")
 
@@ -173,6 +175,7 @@ def test_a_scripted_turn_calls_the_tool_and_records_it(settings):
         ),
         memory=None,
         weather_client=client,
+        weather_clock=FakeClock(),
     )
     result = agent.respond("weather in Shanghai?")
     assert result.reply == "10.9 °C in Shanghai."
@@ -217,6 +220,7 @@ def test_the_dashboard_tools_payload_lists_the_card_and_the_call(settings):
         adapter=script(tool_call("query_weather", {"place": "Shanghai"}), text("Done.")),
         memory=None,
         weather_client=client,
+        weather_clock=FakeClock(),
     )
     agent.respond("weather in Shanghai?")
     server = make_server(settings, agent=agent, port=0)
