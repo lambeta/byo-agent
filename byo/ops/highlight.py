@@ -16,6 +16,7 @@ from typing import Any
 
 from byo.ops.liveness import alive as process_alive
 from byo.ops.map import NODES
+from byo.ops.observability import FATAL_STAGES
 
 STAGE_NODES = {
     "gate": "gate",
@@ -249,7 +250,7 @@ def final_states(
         states["cost"] = "done"
     if ended:
         states["record"] = "done"
-        if not (error_stages & {"gate", "llm", "tool", "turn"}):
+        if not (error_stages & FATAL_STAGES):
             states["reply"] = "done"
 
     cut = bool(error_stages) or not ended
@@ -282,7 +283,11 @@ def turn_state(
     end = next(
         (event for event in reversed(records) if event.get("type") == "turn_end"), None
     )
-    errors = [event for event in records if event.get("type") == "error"]
+    errors = [
+        event
+        for event in records
+        if event.get("type") == "error" and str(event.get("stage") or "") in FATAL_STAGES
+    ]
     if end is not None:
         if end.get("state") == "failed" or errors:
             return "failed"

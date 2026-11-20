@@ -267,6 +267,25 @@ def test_turn_state_running_interrupted_complete():
     assert turn_state(legacy, is_alive=lambda pid: True) == "interrupted"
 
 
+def test_turn_state_survives_a_consolidation_error():
+    events = skipped_turn()
+    events.insert(
+        -1,
+        ev(
+            "error",
+            "2026-11-19T10:00:03.715+08:00",
+            stage="consolidation",
+            error_kind="Internal",
+            message="disk on fire",
+        ),
+    )
+    assert turn_state(events, is_alive=lambda pid: True) == "complete"
+    fatal = [
+        {**e, "stage": "llm"} if e["type"] == "error" else e for e in events
+    ]
+    assert turn_state(fatal, is_alive=lambda pid: True) == "failed"
+
+
 def test_a_legacy_turn_invents_no_running_stage():
     events = [e for e in skipped_turn() if not e["type"].endswith("_start")]
     units = cues(events, memory_enabled=True)

@@ -102,6 +102,11 @@ NOT_STEPS = frozenset(
     {"gate_start", "llm_start", "tool_start", "consolidation_start", "context", "retry"}
 )
 
+# An error at one of these stages ends the turn without a reply. A consolidation
+# error does not: the app records it and still delivers the reply ("consolidation
+# never fails a turn"), so the projections must agree with the terminal record.
+FATAL_STAGES = frozenset({"gate", "llm", "tool", "turn"})
+
 
 def _step(event: dict[str, Any], provider: str, model: str) -> dict[str, Any] | None:
     kind = event.get("type")
@@ -175,7 +180,9 @@ def build_turn(turn: dict[str, Any], provider: str = "", model: str = "") -> dic
         else None
     )
     gate = next((e for e in turn["events"] if e.get("type") == "gate"), None)
-    failed = any(step["kind"] == "error" for step in steps)
+    failed = any(
+        step["kind"] == "error" and step.get("stage") in FATAL_STAGES for step in steps
+    )
     state = "unfinished" if turn.get("unfinished") else ("failed" if failed else "complete")
     return {
         "turn_id": turn["turn_id"],

@@ -123,6 +123,25 @@ def test_failure_state(settings):
     assert any(step["kind"] == "error" for step in payload["steps"])
 
 
+def test_a_consolidation_error_does_not_fail_the_turn(settings):
+    events = sample()
+    events.insert(
+        3,
+        {
+            "type": "error",
+            "turn_id": "t_abc",
+            "stage": "consolidation",
+            "error_kind": "Internal",
+            "message": "disk on fire",
+            "ts": "2026-11-18T10:00:00.900+08:00",
+        },
+    )
+    write(settings, events)
+    payload = build_turn(group_turns(read_events(settings.home, "all")[0])[0])
+    assert payload["state"] == "complete"
+    assert any(step["kind"] == "error" for step in payload["steps"])
+
+
 def test_spend_totals(settings):
     write(settings, sample())
     events, _ = read_events(settings.home, "all")

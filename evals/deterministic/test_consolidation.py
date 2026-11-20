@@ -95,6 +95,36 @@ def test_a_consolidated_turn_records_the_event(settings):
     assert event["kept"][0]["subject"] == "alex"
 
 
+def test_a_consolidation_failure_never_fails_the_turn(settings, conn):
+    from byo.app import Agent
+    from byo.memory import Memory
+    from byo.ops.highlight import turn_state
+    from byo.ops.observability import build_turn, group_turns
+
+    class FailingMemory(Memory):
+        def maybe_consolidate(self, recalled="", on_start=None):
+            raise RuntimeError("disk on fire")
+
+    gate = {
+        "text": '{"needs_memory": false, "reason": "nothing to look up"}',
+        "usage": {"in": 5, "out": 5},
+    }
+    adapter = script(gate, text("the reply"))
+    memory = FailingMemory(conn, settings, adapter)
+    agent = Agent(settings, adapter=adapter, conn=conn, memory=memory)
+    result = agent.respond("hello")
+    assert result.reply == "the reply"
+    assert result.error == ""
+    events = agent.trajectory.events
+    error = next(item for item in events if item["type"] == "error")
+    assert error["stage"] == "consolidation"
+    end = next(item for item in events if item["type"] == "turn_end")
+    assert end["state"] == "complete"
+    # The projections agree with the terminal record: the person got a reply.
+    assert turn_state(events, is_alive=lambda pid: True) == "complete"
+    assert build_turn(group_turns(events)[0])["state"] == "complete"
+
+
 def test_unparseable_answer_keeps_rows(conn):
     seed(conn)
     facts, episodes = FactStore(conn), EpisodeStore(conn)
