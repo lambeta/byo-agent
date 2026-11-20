@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import copy
+from datetime import UTC, datetime
+
 import pytest
 from weather_fakes import FakeClient, FakeClock, load_fixture
 
@@ -25,8 +28,8 @@ from byo.weather.service import (
 def build(geocode="geocode-shanghai", forecast="forecast-metric", **kwargs):
     clock = FakeClock()
     client = FakeClient(
-        load_fixture(geocode) if geocode else None,
-        load_fixture(forecast) if forecast else None,
+        load_fixture(geocode) if isinstance(geocode, str) else geocode,
+        load_fixture(forecast) if isinstance(forecast, str) else forecast,
     )
     return WeatherService(client, clock=clock, **kwargs), client, clock
 
@@ -234,3 +237,146 @@ def test_the_cache_evicts_the_oldest_entry_at_the_cap():
     service._cached(("k", CACHE_MAX), 3600, lambda: {"i": "new"})
     assert len(service._cache) == CACHE_MAX
     assert ("k", CACHE_MAX) in service._cache
+
+
+def test_now_reports_the_clock():
+    service, _, clock = build()
+    assert service.now() is clock.now
+
+
+def test_a_country_code_hint_resolves():
+    service, _, _ = build()
+    report = service.report(place="Shanghai, cn")
+    assert report.place.name == "Shanghai"
+    assert report.place.country_code == "CN"
+
+
+def test_a_region_hint_matching_nothing_is_refused():
+    service, _, _ = build(geocode="geocode-springfield")
+    with pytest.raises(WeatherFailure) as caught:
+        service.report(place="Springfield, Texas")
+    assert caught.value.category == NOT_RECOGNISED
+    assert "in the region you named" in caught.value.message
+
+
+def test_non_list_results_are_data_unavailable():
+    service, _, _ = build(geocode={"results": {"name": "Shanghai"}})
+    with pytest.raises(WeatherFailure) as caught:
+        service.report(place="Shanghai")
+    assert caught.value.category == DATA_UNAVAILABLE
+
+
+def test_an_unknown_timezone_falls_back_to_utc():
+    geocode = load_fixture("geocode-shanghai")
+    for result in geocode["results"]:
+        result["timezone"] = "Bogus/Zone"
+    clock = FakeClock(datetime(2026, 11, 19, 23, 0, tzinfo=UTC))
+    client = FakeClient(geocode, load_fixture("forecast-metric"))
+    service = WeatherService(client, clock=clock)
+    report = service.report(place="Shanghai")
+    # Asia/Shanghai would call it the 20th; the UTC fallback keeps it the 19th.
+    assert report.daily[0].date == "2026-11-19"
+
+
+def mutated_forecast(mutate):
+    payload = copy.deepcopy(load_fixture("forecast-metric"))
+    mutate(payload)
+    return payload
+
+
+def test_missing_current_block_is_data_unavailable():
+    forecast = mutated_forecast(lambda p: p.pop("current"))
+    service, _, _ = build(forecast=forecast)
+    with pytest.raises(WeatherFailure) as caught:
+        service.report(place="Shanghai")
+    assert caught.value.category == DATA_UNAVAILABLE
+
+
+def test_empty_daily_times_are_data_unavailable():
+    forecast = mutated_forecast(lambda p: p["daily"].update(time=[]))
+    service, _, _ = build(forecast=forecast)
+    with pytest.raises(WeatherFailure) as caught:
+        service.report(place="Shanghai")
+    assert caught.value.category == DATA_UNAVAILABLE
+
+
+def test_a_day_missing_from_the_times_is_data_unavailable():
+    def drop(payload):
+        daily = payload["daily"]
+        index = daily["time"].index("2026-11-20")
+        for values in daily.values():
+            if isinstance(values, list):
+                values.pop(index)
+
+    service, _, _ = build(forecast=mutated_forecast(drop))
+    with pytest.raises(WeatherFailure) as caught:
+        service.report(place="Shanghai", start="2026-11-20")
+    assert caught.value.category == DATA_UNAVAILABLE
+
+
+def test_descending_times_are_data_unavailable():
+    def reverse(payload):
+        daily = payload["daily"]
+        for key, values in daily.items():
+            if isinstance(values, list):
+                daily[key] = values[::-1]
+
+    service, _, _ = build(forecast=mutated_forecast(reverse))
+    with pytest.raises(WeatherFailure) as caught:
+        service.report(place="Shanghai", start="2026-11-19", end="2026-11-22")
+    assert caught.value.category == DATA_UNAVAILABLE
+
+
+def test_a_missing_timezone_is_data_unavailable():
+    geocode = load_fixture("geocode-shanghai")
+    for result in geocode["results"]:
+        result["timezone"] = ""
+    forecast = mutated_forecast(lambda p: p.pop("timezone"))
+    service, _, _ = build(geocode=geocode, forecast=forecast)
+    with pytest.raises(WeatherFailure) as caught:
+        service.report(place="Shanghai")
+    assert caught.value.category == DATA_UNAVAILABLE
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda p: p.update(current_units="celsius"),
+        lambda p: p["current_units"].update(apparent_temperature="°F"),
+        lambda p: p["current_units"].update(wind_speed_10m="mph"),
+        lambda p: p["current_units"].update(precipitation="inch"),
+        lambda p: p["daily_units"].update(temperature_2m_max="°F"),
+        lambda p: p["daily_units"].update(temperature_2m_min="°F"),
+        lambda p: p["daily_units"].update(precipitation_sum="inch"),
+    ],
+    ids=[
+        "non-dict-units",
+        "apparent-temperature",
+        "wind-speed",
+        "precipitation",
+        "daily-max",
+        "daily-min",
+        "daily-precipitation",
+    ],
+)
+def test_unit_mismatches_are_data_unavailable(mutate):
+    service, _, _ = build(forecast=mutated_forecast(mutate))
+    with pytest.raises(WeatherFailure) as caught:
+        service.report(place="Shanghai")
+    assert caught.value.category == DATA_UNAVAILABLE
+
+
+def test_boolean_numbers_are_data_unavailable():
+    forecast = mutated_forecast(lambda p: p["current"].update(temperature_2m=True))
+    service, _, _ = build(forecast=forecast)
+    with pytest.raises(WeatherFailure) as caught:
+        service.report(place="Shanghai")
+    assert caught.value.category == DATA_UNAVAILABLE
+
+
+def test_a_blank_reading_time_is_data_unavailable():
+    forecast = mutated_forecast(lambda p: p["current"].update(time=""))
+    service, _, _ = build(forecast=forecast)
+    with pytest.raises(WeatherFailure) as caught:
+        service.report(place="Shanghai")
+    assert caught.value.category == DATA_UNAVAILABLE
