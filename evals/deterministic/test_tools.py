@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 from byo.tools import build_registry
@@ -71,6 +72,65 @@ def test_create_event_rejects_a_bad_start(settings, conn):
     assert out.startswith("Error:")
     assert "ISO 8601" in out
     assert conn.execute("SELECT COUNT(*) FROM calendar_events").fetchone()[0] == 0
+
+
+def test_create_event_rejects_a_start_without_offset(settings, conn):
+    registry = build_registry(conn, settings)
+    out = registry.execute(
+        "create_event", {"title": "x", "start": "2026-11-20T09:00:00"}
+    )
+    assert out.startswith("Error:")
+    assert "offset" in out
+    assert conn.execute("SELECT COUNT(*) FROM calendar_events").fetchone()[0] == 0
+
+
+def test_create_event_names_end_when_the_end_is_bad(settings, conn):
+    registry = build_registry(conn, settings)
+    out = registry.execute(
+        "create_event",
+        {"title": "x", "start": "2026-11-20T09:00:00+08:00", "end": "soon"},
+    )
+    assert out.startswith("Error:")
+    assert "end must be" in out
+    assert "start must be" not in out
+    assert conn.execute("SELECT COUNT(*) FROM calendar_events").fetchone()[0] == 0
+
+
+def test_create_event_rejects_an_empty_title(settings, conn):
+    registry = build_registry(conn, settings)
+    out = registry.execute(
+        "create_event", {"title": "   ", "start": "2026-11-20T09:00:00+08:00"}
+    )
+    assert out.startswith("Error:")
+    assert "title" in out
+    assert conn.execute("SELECT COUNT(*) FROM calendar_events").fetchone()[0] == 0
+
+
+def test_list_events_defaults_to_today(settings, conn):
+    registry = build_registry(conn, settings)
+    out = registry.execute("list_events", {})
+    today = date.today().isoformat()
+    assert out == f"No events between {today} and {today}."
+
+
+def test_list_events_names_the_bad_field(settings, conn):
+    registry = build_registry(conn, settings)
+    out = registry.execute("list_events", {"start": "friday"})
+    assert "start must be an ISO date" in out
+    out = registry.execute("list_events", {"start": "2026-11-20", "end": "later"})
+    assert "end must be an ISO date" in out
+
+
+def test_list_events_covers_a_range(settings, conn):
+    registry = build_registry(conn, settings)
+    registry.execute(
+        "create_event", {"title": "Solo", "start": "2026-11-21T09:00:00+08:00"}
+    )
+    out = registry.execute(
+        "list_events", {"start": "2026-11-20", "end": "2026-11-22"}
+    )
+    assert "1 event(s) between 2026-11-20 and 2026-11-22" in out
+    assert "Solo" in out
 
 
 def test_save_note_writes_a_fact(settings, conn):

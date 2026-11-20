@@ -30,18 +30,21 @@ LIST_SCHEMA = {
 
 def _parse(value: str, field: str) -> datetime:
     try:
-        return datetime.fromisoformat(value)
+        parsed = datetime.fromisoformat(value)
     except ValueError as exc:
-        raise ValueError(f"{field} must be ISO 8601 with an offset, got {value!r}") from exc
+        raise ValueError(f"{field} must be ISO 8601, got {value!r}") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{field} must carry an offset, got {value!r}")
+    return parsed
 
 
-def _iso_date(value: str | None) -> str:
+def _iso_date(value: str | None, field: str) -> str:
     if not value:
         return date.today().isoformat()
     try:
         return datetime.fromisoformat(value).date().isoformat()
     except ValueError as exc:
-        raise ValueError(f"start must be an ISO date, got {value!r}") from exc
+        raise ValueError(f"{field} must be an ISO date, got {value!r}") from exc
 
 
 def make_tools(conn, settings) -> list[Tool]:
@@ -68,8 +71,8 @@ def make_tools(conn, settings) -> list[Tool]:
         return f"Created event {cursor.lastrowid}: {title.strip()} at {start} (saved in {db})."
 
     def list_events(start: str | None = None, end: str | None = None) -> str:
-        first = _iso_date(start)
-        last = _iso_date(end or start)
+        first = _iso_date(start, "start")
+        last = _iso_date(end or start, "end")
         rows = conn.execute(
             "SELECT id, title, start, attendees FROM calendar_events "
             "WHERE date(start) >= ? AND date(start) <= ? ORDER BY start LIMIT 20",
