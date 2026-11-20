@@ -19,12 +19,22 @@ from typing import Any
 from byo.loop.types import (
     BadResponse,
     Capabilities,
+    RateLimited,
+    Refused,
     Request,
     Response,
     TextBlock,
     ToolCallBlock,
+    Transport,
     Usage,
 )
+
+ERROR_KINDS = {
+    "Transport": Transport,
+    "Refused": Refused,
+    "RateLimited": RateLimited,
+    "BadResponse": BadResponse,
+}
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "models"
 
@@ -48,6 +58,11 @@ class ScriptedAdapter:
         if not self.responses:
             raise BadResponse("script exhausted: the model was called more times than scripted")
         spec = self.responses.pop(0)
+        if spec.get("error"):
+            kind = ERROR_KINDS.get(str(spec["error"]))
+            if kind is None:
+                raise BadResponse(f"unknown scripted error kind {spec['error']!r}")
+            raise kind(str(spec.get("message") or spec["error"]))
         blocks: list[TextBlock | ToolCallBlock] = []
         if spec.get("text"):
             blocks.append(TextBlock(str(spec["text"])))
@@ -93,6 +108,11 @@ def script(*responses: dict[str, Any]) -> ScriptedAdapter:
 
 def text(text: str, usage: dict[str, int] | None = None) -> dict[str, Any]:
     return {"text": text, "stop_reason": "end_turn", "usage": usage or {"in": 10, "out": 5}}
+
+
+def error(kind: str, message: str = "") -> dict[str, Any]:
+    """Script one failing model call: error('Transport') or error('Refused')."""
+    return {"error": kind, "message": message or kind}
 
 
 def tool_call(

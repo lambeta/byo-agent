@@ -26,7 +26,7 @@ from byo.ops.trajectory import Trajectory
 from byo.runtime.session import Session
 from byo.tools import build_registry
 
-RECORDED = ("llm", "tool", "gate", "consolidation", "error", "llm_start", "tool_start")
+RECORDED = ("llm", "tool", "gate", "consolidation", "error", "llm_start", "tool_start", "retry")
 
 
 AUTO = object()

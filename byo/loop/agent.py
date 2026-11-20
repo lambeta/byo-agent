@@ -2,7 +2,8 @@
 
 Mechanism: one while-loop over model calls. A response with no tool call ends the
 turn; a response at the step limit gets one final call with tools disabled so the
-person still gets an answer from what was gathered.
+person still gets an answer from what was gathered. A Transport failure before any
+text was emitted is retried once, so one network blip does not end the turn.
 
 Rejected alternative: raising the step limit until it never trips. It turns a
 bounded turn into unbounded spend, and it hides the one failure a person can fix
@@ -22,6 +23,7 @@ from byo.loop.types import (
     Request,
     ToolResultBlock,
     ToolSpec,
+    Transport,
 )
 from byo.tools.registry import ToolRegistry
 
@@ -51,6 +53,40 @@ def error_text(exc: BaseException) -> str:
     if message and getattr(exc, "status", 0):
         return str(message)
     return f"{type(exc).__name__}: {exc}"
+
+
+def _complete(
+    adapter,
+    request: Request,
+    notify: Observer,
+    stream: bool,
+    on_delta: Callable[[str], None],
+):
+    """One model call, retried once on a Transport error before anything was emitted.
+
+    Mechanism: a network blip gets a single second attempt, so a flaky connection
+    does not end the turn. A stream that already delivered text is not retried: the
+    person would see the opening twice. Refused and RateLimited are decisions, not
+    faults, and are never retried.
+    """
+    retried = False
+    delivered = False
+
+    def guarded(delta: str) -> None:
+        nonlocal delivered
+        delivered = True
+        on_delta(delta)
+
+    while True:
+        try:
+            if stream and adapter.capabilities.streaming:
+                return adapter.stream(request, on_delta=guarded)
+            return adapter.complete(request)
+        except Transport:
+            if retried or delivered:
+                raise
+            retried = True
+            notify("retry", {"stage": "llm", "model": request.model})
 
 
 def run_loop(
@@ -89,12 +125,13 @@ def run_loop(
         started = time.perf_counter()
         notify("llm_start", {"iteration": iteration, "model": model})
         try:
-            if stream and adapter.capabilities.streaming:
-                response = adapter.stream(
-                    request, on_delta=lambda delta: notify("text", {"delta": delta})
-                )
-            else:
-                response = adapter.complete(request)
+            response = _complete(
+                adapter,
+                request,
+                notify,
+                stream,
+                on_delta=lambda delta: notify("text", {"delta": delta}),
+            )
         except ModelError as exc:
             result.error = exc.kind
             notify("error", {"stage": "llm", "error_kind": exc.kind, "message": error_text(exc)})
@@ -175,7 +212,7 @@ def _final_answer(
     started = time.perf_counter()
     notify("llm_start", {"iteration": result.iterations + 1, "model": model, "kind": "final"})
     try:
-        response = adapter.complete(request)
+        response = _complete(adapter, request, notify, False, lambda delta: None)
     except ModelError as exc:
         notify("error", {"stage": "llm", "error_kind": exc.kind, "message": error_text(exc)})
         return ""

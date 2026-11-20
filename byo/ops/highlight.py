@@ -129,6 +129,8 @@ def cues(
             add(at, kind, {"consolidation": "done", "facts": "done"},
                 ["e-consolidation-facts"],
                 f"memory written · {int(event.get('new_facts') or 0)} facts")
+        elif kind == "retry":
+            add(at, kind, {"model": "live"}, [], "model retry · transport hiccup")
         elif kind == "receipt":
             add(at, kind, {"cost": "done"}, ["e-record-cost"], "costed")
         elif kind == "error":

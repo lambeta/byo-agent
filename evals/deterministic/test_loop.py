@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from scripted import script, text, tool_call
+from scripted import error, script, text, tool_call
 
 from byo.loop.agent import run_loop
 from byo.loop.types import Message
@@ -121,6 +121,37 @@ def test_a_model_script_fixture_replays():
     result = run_loop(adapter, "m", "sys", [Message.user("hi")], registry(calls))
     assert result.reply == "done"
     assert calls == ["x"]
+
+
+def test_transport_error_is_retried_once():
+    adapter = script(error("Transport"), text("recovered"))
+    events, observer = collect()
+    result = run_loop(
+        adapter, "m", "sys", [Message.user("hi")], ToolRegistry(), observer=observer
+    )
+    assert result.reply == "recovered"
+    assert result.error == ""
+    assert len(adapter.calls) == 2
+    assert [kind for kind, _ in events if kind == "retry"] == ["retry"]
+
+
+def test_a_second_transport_failure_ends_the_turn():
+    adapter = script(error("Transport"), error("Transport", "still down"))
+    events, observer = collect()
+    result = run_loop(
+        adapter, "m", "sys", [Message.user("hi")], ToolRegistry(), observer=observer
+    )
+    assert result.error == "Transport"
+    assert len(adapter.calls) == 2
+    assert [kind for kind, _ in events if kind == "retry"] == ["retry"]
+    assert [event["error_kind"] for kind, event in events if kind == "error"] == ["Transport"]
+
+
+def test_refusal_is_never_retried():
+    adapter = script(error("Refused", "bad request"))
+    result = run_loop(adapter, "m", "sys", [Message.user("hi")], ToolRegistry())
+    assert result.error == "Refused"
+    assert len(adapter.calls) == 1
 
 
 def test_trim_runs_before_second_iteration_only():
