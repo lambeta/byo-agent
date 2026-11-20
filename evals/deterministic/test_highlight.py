@@ -286,6 +286,132 @@ def test_turn_state_survives_a_consolidation_error():
     assert turn_state(fatal, is_alive=lambda pid: True) == "failed"
 
 
+def consolidating_turn():
+    events = skipped_turn()
+    events[-1:-1] = [
+        ev("consolidation_start", "2026-11-19T10:00:03.712+08:00", pending=2),
+        ev("consolidation", "2026-11-19T10:00:03.715+08:00", new_facts=2,
+           duration_ms=3),
+    ]
+    return events
+
+
+def test_consolidation_lights_then_settles_with_the_fact_count():
+    units = cues(consolidating_turn(), memory_enabled=True)
+    start = next(cue for cue in units if cue["step"] == "consolidation_start")
+    assert start["states"] == {"consolidation": "live"}
+    assert start["label"] == "memory write"
+    done = next(cue for cue in units if cue["step"] == "consolidation")
+    assert done["states"] == {"consolidation": "done", "facts": "done"}
+    assert done["edges"] == ["e-consolidation-facts"]
+    assert done["label"] == "memory written · 2 facts"
+
+
+def test_a_retry_relights_the_model_with_an_explanation():
+    events = skipped_turn()
+    events.insert(
+        5,
+        ev("retry", "2026-11-19T10:00:02.000+08:00", attempt=2, model="big",
+           error_kind="Transport"),
+    )
+    units = cues(events, memory_enabled=True)
+    retry = next(cue for cue in units if cue["step"] == "retry")
+    assert retry["states"] == {"model": "live"}
+    assert retry["label"] == "model retry · transport hiccup"
+
+
+def test_bare_tool_records_without_starts_still_count_calls():
+    events = [
+        base(),
+        ev("llm", "2026-11-19T10:00:01.000+08:00", iteration=1, kind="loop",
+           model="big", stop_reason="tool_use", usage={"in": 1, "out": 1},
+           duration_ms=1),
+        ev("tool", "2026-11-19T10:00:01.100+08:00", tool="list_events", ok=True,
+           args={}, output="[]", call_id="c1", duration_ms=1),
+        ev("tool", "2026-11-19T10:00:01.200+08:00", tool="save_note", ok=True,
+           args={}, output="saved", call_id="c2", duration_ms=1),
+        ev("turn_end", "2026-11-19T10:00:01.300+08:00", reply="done",
+           iterations=1, state="complete"),
+    ]
+    units = cues(events, memory_enabled=True)
+    labels = [cue["label"] for cue in units if cue["step"] == "tool"]
+    assert labels == [
+        "tool list_events · done · 1 tool call",
+        "tool save_note · done · 2 tool calls",
+    ]
+
+
+def test_the_reply_cue_survives_a_consolidation_error():
+    events = skipped_turn()
+    events.insert(
+        -1,
+        ev("error", "2026-11-19T10:00:03.715+08:00", stage="consolidation",
+           error_kind="Internal", message="disk on fire"),
+    )
+    units = cues(events, memory_enabled=True)
+    reply_cues = [cue for cue in units if cue["step"] == "turn_end"]
+    assert [cue["label"] for cue in reply_cues] == ["reply", "reply"]
+    assert reply_cues[-1]["states"]["reply"] == "done"
+
+
+def test_the_reply_cue_marks_a_fatal_error_failed():
+    events = skipped_turn()
+    events.insert(
+        -1,
+        ev("error", "2026-11-19T10:00:03.000+08:00", stage="llm",
+           error_kind="Timeout", message="slow"),
+    )
+    events[-1] = {**events[-1], "state": "failed", "reply": ""}
+    units = cues(events, memory_enabled=True)
+    reply_cues = [cue for cue in units if cue["step"] == "turn_end"]
+    assert [cue["label"] for cue in reply_cues] == [
+        "reply · failed",
+        "reply · failed",
+    ]
+
+
+def test_final_states_after_consolidation_and_a_degraded_gate():
+    states = final_states(consolidating_turn(), memory_enabled=True)
+    assert states["consolidation"] == "done"
+    assert states["facts"] == "done"
+    degraded = [
+        {**e, "degraded": True} if e["type"] == "gate" else e
+        for e in skipped_turn()
+    ]
+    assert final_states(degraded, memory_enabled=True)["gate"] == "degraded"
+
+
+def test_final_states_of_an_unfinished_turn_mark_the_open_stage_partial():
+    events = [
+        base(),
+        ev("llm_start", "2026-11-19T10:00:00.220+08:00", iteration=1, model="big"),
+    ]
+    states = final_states(events, memory_enabled=True)
+    assert states["model"] == "partial"
+    assert states["gate"] == "not-reached"
+    assert states["tools"] == "not-reached"
+    assert states["reply"] == "not-reached"
+    assert states["record"] == "idle"
+
+    settled_gate = [
+        base(),
+        ev("gate_start", "2026-11-19T10:00:00.100+08:00", model="small"),
+        ev("gate", "2026-11-19T10:00:00.200+08:00", decision="skip", reason="x",
+           degraded=False),
+        ev("llm_start", "2026-11-19T10:00:00.220+08:00", iteration=1, model="big"),
+    ]
+    states = final_states(settled_gate, memory_enabled=True)
+    assert states["gate"] == "skipped"
+    assert states["model"] == "partial"
+
+
+def test_turn_state_without_a_turn_start_is_interrupted():
+    tail = [
+        e for e in skipped_turn() if e["type"] not in ("turn_start", "turn_end")
+    ]
+    assert turn_state(tail, is_alive=lambda pid: True) == "interrupted"
+
+
 def test_a_legacy_turn_invents_no_running_stage():
     events = [e for e in skipped_turn() if not e["type"].endswith("_start")]
     units = cues(events, memory_enabled=True)

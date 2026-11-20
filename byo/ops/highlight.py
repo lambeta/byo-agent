@@ -107,10 +107,7 @@ def cues(
             label = "final answer" if index == last_llm else f"loop {number} · model answered"
             add(at, kind, {"model": "done"}, [], label)
         elif kind == "tool_start":
-            if not tool_starts:
-                tools += 1
-            else:
-                tools += 1
+            tools += 1
             add(at, kind, {"tools": "live"}, ["e-model-tools"],
                 f"tool {event.get('tool') or 'tool'} · {_calls(tools)}")
         elif kind == "tool":
@@ -141,7 +138,9 @@ def cues(
                 f"failed: {stage}")
         elif kind == "turn_end":
             failed = event.get("state") == "failed" or any(
-                item.get("type") == "error" for item in records
+                item.get("type") == "error"
+                and str(item.get("stage") or "") in FATAL_STAGES
+                for item in records
             )
             label = "reply · failed" if failed else "reply"
             add(at, kind, {"reply": "live"},
