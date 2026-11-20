@@ -171,3 +171,16 @@ def test_send_message_writes_the_outbox_and_says_so(settings, conn):
     text = files[0].read_text(encoding="utf-8")
     assert "to: Alex Chen" in text
     assert "running late" in text
+
+
+def test_send_message_rejects_blank_fields(settings, conn):
+    registry = build_registry(conn, settings)
+    out = registry.execute("send_message", {"to": "  ", "body": "hi"})
+    assert out == "Error: ValueError: to and body are both required"
+    assert list(Path(settings.outbox_dir).glob("*.md")) == []
+
+
+def test_registry_get_returns_the_tool_or_none(settings, conn):
+    registry = build_registry(conn, settings)
+    assert registry.get("send_message").name == "send_message"
+    assert registry.get("nope") is None

@@ -93,14 +93,18 @@ def connect(home: Path, check_same_thread: bool = False) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=3000")
-    conn.executescript(SCHEMA)
+    # Migrate before the schema script: chat_log_session indexes session_id, which a
+    # pre-migration chat_log lacks, so the schema's CREATE INDEX would fail first.
     _migrate(conn)
+    conn.executescript(SCHEMA)
     return conn
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
     """Additive, idempotent column upgrades. SQLite has no ADD COLUMN IF NOT EXISTS."""
     columns = {row[1] for row in conn.execute("PRAGMA table_info(chat_log)").fetchall()}
+    if not columns:
+        return  # fresh home: the schema script creates chat_log in full
     for name, ddl in (
         ("session_id", "TEXT DEFAULT 'default'"),
         ("source", "TEXT DEFAULT 'cli'"),

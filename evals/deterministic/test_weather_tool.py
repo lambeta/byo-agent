@@ -238,3 +238,8 @@ def test_the_dashboard_tools_payload_lists_the_card_and_the_call(settings):
     results = [row for row in payload["results"] if row["tool"] == "query_weather"]
     assert results and results[0]["ok"] is True
     assert results[0]["output"].startswith("Weather for Shanghai")
+
+
+def test_an_unknown_units_argument_is_an_argument_error(settings, conn):
+    output, _ = run(settings, conn, {"place": "Shanghai", "units": "kelvin"})
+    assert output == "Error: argument error: units must be 'metric' or 'imperial', got 'kelvin'"

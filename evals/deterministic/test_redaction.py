@@ -57,3 +57,11 @@ def test_nothing_sensitive_reaches_the_file(settings):
     assert "sk-ant-" not in written
     assert "abcdefgh12345678" not in written
     assert "[redacted]" in written
+
+
+def test_long_strings_are_truncated():
+    from byo.ops.trajectory import MAX_STRING
+
+    value = redact({"output": "x" * (MAX_STRING + 100)})["output"]
+    assert value.endswith("[…truncated]")
+    assert len(value) == MAX_STRING + len("[…truncated]")

@@ -87,3 +87,13 @@ def test_a_turn_recalls_a_fact_and_records_the_gate(settings):
     events = [event for event in agent.trajectory.events if event["type"] == "gate"]
     assert events[0]["decision"] == "retrieve"
     agent.close()
+
+
+def test_recall_falls_back_to_episodes_when_facts_miss(settings, conn):
+    from byo.memory import Memory
+
+    memory = Memory(conn, settings, script())
+    memory.episodes.add("2026-11-18", "booked a catch-up with alex")
+    memory.retrieve = True
+    block = memory.recall_block("when was the catch-up?")
+    assert block == "- 2026-11-18: booked a catch-up with alex"
