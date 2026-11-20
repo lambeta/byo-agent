@@ -198,7 +198,12 @@ def _final_answer(
     result: LoopResult,
     trim,
 ) -> str:
-    """The one tools-off call after the limit: its text, or "" when it failed."""
+    """The one tools-off call after the limit: its text, or a failed result.
+
+    A failed final answer sets result.error: the turn ends on the canned
+    LIMIT_REPLY, not on anything the model said, so the record must say failed
+    and agree with the projections that treat a stage=llm error as fatal.
+    """
     if trim is not None:
         trim(messages)
     request = Request(
@@ -214,6 +219,7 @@ def _final_answer(
     try:
         response = _complete(adapter, request, notify, False, lambda delta: None)
     except ModelError as exc:
+        result.error = exc.kind
         notify("error", {"stage": "llm", "error_kind": exc.kind, "message": error_text(exc)})
         return ""
     call = {

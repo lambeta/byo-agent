@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from scripted import error, script, text, tool_call
 
-from byo.loop.agent import run_loop
+from byo.loop.agent import LIMIT_REPLY, error_text, run_loop
 from byo.loop.types import Message
 from byo.tools.registry import Tool, ToolRegistry
 
@@ -152,6 +152,59 @@ def test_refusal_is_never_retried():
     result = run_loop(adapter, "m", "sys", [Message.user("hi")], ToolRegistry())
     assert result.error == "Refused"
     assert len(adapter.calls) == 1
+
+
+def test_a_failed_final_answer_marks_the_turn_failed():
+    calls: list[str] = []
+    adapter = script(tool_call("echo", {"value": "x"}), error("Refused", "nope"))
+    events, observer = collect()
+    result = run_loop(
+        adapter,
+        "m",
+        "sys",
+        [Message.user("hi")],
+        registry(calls),
+        max_iterations=1,
+        observer=observer,
+    )
+    assert result.limit_reached is True
+    assert result.error == "Refused"
+    assert result.reply == LIMIT_REPLY
+    assert [event["error_kind"] for kind, event in events if kind == "error"] == ["Refused"]
+
+
+def test_a_failed_final_answer_agrees_with_the_record_and_projections(settings):
+    """The terminal record, the chat log and every projection call this turn failed."""
+    import json
+
+    from byo.app import Agent
+    from byo.ops.highlight import turn_state
+    from byo.ops.observability import build_turn, group_turns
+
+    settings.max_iterations = 1
+    adapter = script(tool_call("list_events", {}), error("Refused", "nope"))
+    agent = Agent(settings, adapter=adapter, memory=None)
+    result = agent.respond("what is on my calendar?")
+    assert result.reply == LIMIT_REPLY
+    assert result.error == "Refused"
+    events = agent.trajectory.events
+    end = next(item for item in events if item["type"] == "turn_end")
+    assert end["state"] == "failed"
+    row = agent.conn.execute(
+        "SELECT meta FROM chat_log WHERE role = 'assistant'"
+    ).fetchone()
+    assert json.loads(row["meta"])["state"] == "failed"
+    assert turn_state(events, is_alive=lambda pid: True) == "failed"
+    assert build_turn(group_turns(events)[0])["state"] == "failed"
+
+
+def test_error_text_prefers_an_sdk_message_attribute():
+    class SdkShaped(Exception):
+        message = "rate limited, slow down"
+        status = 429
+
+    assert error_text(SdkShaped()) == "rate limited, slow down"
+    assert error_text(ValueError("plain")) == "ValueError: plain"
 
 
 def test_trim_runs_before_second_iteration_only():
