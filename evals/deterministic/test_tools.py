@@ -5,6 +5,9 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
+from scripted import script
+
+from byo.memory import Memory
 from byo.tools import build_registry
 from byo.tools.registry import Tool, ToolRegistry
 
@@ -139,6 +142,24 @@ def test_save_note_writes_a_fact(settings, conn):
     assert str(settings.db_path) in out
     row = conn.execute("SELECT subject, content, source FROM facts").fetchone()
     assert (row["subject"], row["source"]) == ("alex", "tool")
+
+
+def test_save_note_rejects_blank_fields(settings, conn):
+    registry = build_registry(conn, settings)
+    out = registry.execute("save_note", {"subject": "  ", "content": "prefers mornings"})
+    assert out == "Error: ValueError: subject and content are both required"
+    assert conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == 0
+
+
+def test_save_note_rewrites_the_mirror(settings, conn):
+    memory = Memory(conn, settings, script())
+    registry = build_registry(conn, settings, memory=memory)
+    out = registry.execute("save_note", {"subject": "alex", "content": "prefers morning meetings"})
+    fact_id = conn.execute("SELECT id FROM facts").fetchone()["id"]
+    mirror_file = settings.memory_dir / f"{fact_id}.md"
+    assert str(mirror_file) in out
+    assert "prefers morning meetings" in mirror_file.read_text(encoding="utf-8")
+    assert "[alex] prefers morning meetings" in settings.mirror_path.read_text(encoding="utf-8")
 
 
 def test_send_message_writes_the_outbox_and_says_so(settings, conn):

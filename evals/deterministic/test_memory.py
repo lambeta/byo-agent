@@ -44,6 +44,39 @@ def test_episode_store(conn):
     assert "catch-up" in episodes.search("catch-up")[0]["summary"]
 
 
+def test_episode_list_is_newest_first_and_bounded(conn):
+    episodes = EpisodeStore(conn)
+    for day in ("2026-11-17", "2026-11-18", "2026-11-19"):
+        episodes.add(day, f"summary of {day}")
+    assert [row["happened_at"] for row in episodes.list()] == [
+        "2026-11-19",
+        "2026-11-18",
+        "2026-11-17",
+    ]
+    assert len(episodes.list(limit=2)) == 2
+
+
+def test_episode_search_ignores_unusable_text(conn):
+    episodes = EpisodeStore(conn)
+    episodes.add("2026-11-18", "booked a catch-up with alex")
+    assert episodes.search("?!") == []
+
+
+def test_episode_search_survives_a_missing_fts_index(conn):
+    # A database created before the FTS tables existed degrades to no hits, not an error.
+    episodes = EpisodeStore(conn)
+    episodes.add("2026-11-18", "booked a catch-up with alex")
+    conn.execute("DROP TABLE episodes_fts")
+    assert episodes.search("catch-up") == []
+
+
+def test_fact_search_survives_a_missing_fts_index(conn):
+    facts = FactStore(conn)
+    facts.add("alex", "prefers morning meetings")
+    conn.execute("DROP TABLE facts_fts")
+    assert facts.search("mornings") == []
+
+
 def test_a_turn_recalls_a_fact_and_records_the_gate(settings):
     adapter = script(GATE_YES, text("Alex prefers mornings."))
     agent = Agent(settings, adapter=adapter)
