@@ -697,7 +697,6 @@ def make_handler(dash: Dashboard):
                         "gate_start",
                         "llm_start",
                         "tool_start",
-                        "context",
                         "retry",
                     ):
                         # Start frames are additive: they let the dock show a step as

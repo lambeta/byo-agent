@@ -72,6 +72,30 @@ def test_trajectory_vocabulary(settings):
     agent.close()
 
 
+def test_stream_whitelist_matches_the_observer_vocabulary():
+    """Every whitelisted SSE kind must be one the observer can actually emit.
+
+    The 'context' event is recorded to the trajectory (the map reads it from the
+    file) but is never forwarded to the live observer, so it must not sit in the
+    stream whitelist as a dead entry.
+    """
+    import re
+
+    def emitted(source: str, method: str) -> set[str]:
+        return set(re.findall(method + r'\("([a-z_]+)"', source))
+
+    producers = emitted((ROOT / "byo" / "app.py").read_text(), "observer") | emitted(
+        (ROOT / "byo" / "loop" / "agent.py").read_text(), "notify"
+    )
+    dashboard = (ROOT / "byo" / "ops" / "dashboard.py").read_text()
+    block = dashboard.split('elif kind in (', 1)[1].split("):", 1)[0]
+    whitelist = set(re.findall(r'"([a-z_]+)"', block))
+    assert whitelist <= producers, f"dead stream whitelist entries: {whitelist - producers}"
+    assert producers - {"text"} <= whitelist, (
+        f"live events the stream would drop: {producers - {'text'} - whitelist}"
+    )
+
+
 def test_card_payload_keys(settings):
     agent = Agent(settings, adapter=script(text("hello")), memory=None)
     agent.respond("hi")
