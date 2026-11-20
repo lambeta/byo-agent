@@ -36,11 +36,60 @@ def test_unknown_provider_is_a_config_error(home: Path):
         load_settings(env={"BYO_PROVIDER": "mystery"}, home=home)
 
 
+DOTENV_CORPUS = """\
+# a comment
+
+BYO_API_KEY=sk-test-123
+BYO_MODEL=gpt-4o-mini   # the fast one
+export BYO_PORT=7000
+QUOTED="value with # inside"
+SINGLE='single quoted'
+EMPTY=
+SPACED = spaced out
+"""
+
+
+def test_fallback_parser_handles_comments_quotes_and_export():
+    from byo.config import _parse_dotenv_text
+
+    values = _parse_dotenv_text(DOTENV_CORPUS)
+    assert values["BYO_API_KEY"] == "sk-test-123"
+    assert values["BYO_MODEL"] == "gpt-4o-mini"
+    assert values["BYO_PORT"] == "7000"
+    assert values["QUOTED"] == "value with # inside"
+    assert values["SINGLE"] == "single quoted"
+    assert values["EMPTY"] == ""
+    assert values["SPACED"] == "spaced out"
+    assert _parse_dotenv_text("NOT_AN_ASSIGNMENT\n") == {}
+
+
+def test_fallback_parser_agrees_with_python_dotenv(home: Path):
+    dotenv = pytest.importorskip("dotenv")
+    from byo.config import _parse_dotenv_text
+
+    path = home / ".env"
+    path.write_text(DOTENV_CORPUS, encoding="utf-8")
+    reference = {k: (v or "") for k, v in dotenv.dotenv_values(path).items()}
+    fallback = _parse_dotenv_text(DOTENV_CORPUS)
+    assert fallback == reference
+    assert load_settings(env={}, home=home).port == 7000
+
+
 def test_missing_key_message_names_the_variable_and_the_file(home: Path):
     settings = load_settings(env={}, home=home)
     message = missing_key_message(settings)
     assert "BYO_API_KEY" in message
     assert str(home / ".env") in message
+
+def test_an_explicit_model_wins_over_the_provider_default(home: Path):
+    settings = load_settings(env={"BYO_MODEL": "my-model"}, home=home)
+    assert settings.effective_model() == "my-model"
+
+
+def test_a_non_integer_knob_is_a_config_error(home: Path):
+    with pytest.raises(ConfigError):
+        load_settings(env={"BYO_PORT": "soon"}, home=home)
+
 
 def test_weather_defaults(home: Path):
     settings = load_settings(env={}, home=home)

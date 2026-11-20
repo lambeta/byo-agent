@@ -40,13 +40,33 @@ def _dotenv_values(path: Path) -> dict[str, str]:
         text = path.read_text(encoding="utf-8")
     except OSError:
         return values
+    return _parse_dotenv_text(text)
+
+
+def _parse_dotenv_text(text: str) -> dict[str, str]:
+    """The fallback .env reader for a checkout with zero extra installs.
+
+    Matches python-dotenv on the lines people actually paste: blank lines,
+    comments, an `export ` prefix, quoted values, and an inline comment
+    after an unquoted value. Anything fancier needs python-dotenv installed.
+    """
+    values: dict[str, str] = {}
     for raw in text.splitlines():
         line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        if "=" not in line:
             continue
         key, _, value = line.partition("=")
         key = key.strip()
-        value = value.strip().strip('"').strip("'")
+        value = value.strip()
+        if value[:1] in ("'", '"'):
+            end = value.find(value[0], 1)
+            value = value[1:end] if end != -1 else value.strip('"').strip("'")
+        elif " #" in value:
+            value = value.split(" #", 1)[0].rstrip()
         if key:
             values[key] = value
     return values
