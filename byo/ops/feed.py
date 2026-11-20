@@ -68,7 +68,14 @@ class Feed:
         except OSError:
             return {"size": 0, "mtime_ns": 0, "offset": 0, "events": [], "skipped": 0}
         entry = self._files.get(path)
-        if entry is None or stat.st_size < entry["size"] or stat.st_mtime_ns < entry["mtime_ns"]:
+        # inode change = the file was atomically replaced (temp + rename), so the
+        # cached offset points into a different byte stream; never extend across it
+        if (
+            entry is None
+            or stat.st_ino != entry["ino"]
+            or stat.st_size < entry["size"]
+            or stat.st_mtime_ns < entry["mtime_ns"]
+        ):
             entry = self._reload(path, stat)
             self._files[path] = entry
             return entry
@@ -87,6 +94,7 @@ class Feed:
             data = b""
         events, skipped, consumed = self._parse(data)
         return {
+            "ino": stat.st_ino,
             "size": stat.st_size,
             "mtime_ns": stat.st_mtime_ns,
             "offset": consumed,
@@ -105,6 +113,7 @@ class Feed:
         entry["events"].extend(events)
         entry["skipped"] += skipped
         entry["offset"] += consumed
+        entry["ino"] = stat.st_ino
         entry["size"] = stat.st_size
         entry["mtime_ns"] = stat.st_mtime_ns
 
