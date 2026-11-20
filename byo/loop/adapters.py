@@ -50,13 +50,17 @@ def _normalize(exc: Exception) -> ModelError:
 class AnthropicAdapter:
     capabilities = Capabilities(streaming=True, tool_calls=True, usage=True, tool_choice_none=True)
 
-    def __init__(self, api_key: str, base_url: str | None = None) -> None:
-        import anthropic
+    def __init__(
+        self, api_key: str = "", base_url: str | None = None, client: Any = None
+    ) -> None:
+        if client is None:
+            import anthropic
 
-        kwargs: dict[str, Any] = {"api_key": api_key}
-        if base_url:
-            kwargs["base_url"] = base_url
-        self._client = anthropic.Anthropic(**kwargs)
+            kwargs: dict[str, Any] = {"api_key": api_key}
+            if base_url:
+                kwargs["base_url"] = base_url
+            client = anthropic.Anthropic(**kwargs)
+        self._client = client
 
     @staticmethod
     def _messages(messages: tuple[Message, ...]) -> list[dict[str, Any]]:
@@ -138,13 +142,17 @@ class AnthropicAdapter:
 class OpenAIAdapter:
     capabilities = Capabilities(streaming=True, tool_calls=True, usage=True, tool_choice_none=True)
 
-    def __init__(self, api_key: str, base_url: str | None = None) -> None:
-        import openai
+    def __init__(
+        self, api_key: str = "", base_url: str | None = None, client: Any = None
+    ) -> None:
+        if client is None:
+            import openai
 
-        kwargs: dict[str, Any] = {"api_key": api_key}
-        if base_url:
-            kwargs["base_url"] = base_url
-        self._client = openai.OpenAI(**kwargs)
+            kwargs: dict[str, Any] = {"api_key": api_key}
+            if base_url:
+                kwargs["base_url"] = base_url
+            client = openai.OpenAI(**kwargs)
+        self._client = client
 
     @staticmethod
     def _messages(request: Request) -> list[dict[str, Any]]:
@@ -239,7 +247,8 @@ class OpenAIAdapter:
         try:
             chunks = self._client.chat.completions.create(stream=True, **self._params(request))
             for chunk in chunks:
-                usage = getattr(chunk, "usage", usage)
+                # Usage arrives on one chunk only; later chunks carry None again.
+                usage = getattr(chunk, "usage", None) or usage
                 if not chunk.choices:
                     continue
                 delta = chunk.choices[0].delta
