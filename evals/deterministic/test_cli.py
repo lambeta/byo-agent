@@ -32,6 +32,46 @@ def test_version_and_help(capsys):
     assert "byo" in out
 
 
+def test_trajectory_subcommand_renders_an_explicit_file(tmp_path, capsys):
+    from byo.__main__ import main as entry
+
+    path = tmp_path / "2026-11-18.jsonl"
+    path.write_text(
+        '{"type": "turn_start", "turn_id": "t_1", "user_message": "hi", '
+        '"ts": "2026-11-18T10:00:00.000+08:00"}\n'
+        '{"type": "turn_end", "turn_id": "t_1", "reply": "done", "iterations": 1, '
+        '"ts": "2026-11-18T10:00:02.000+08:00"}\n',
+        encoding="utf-8",
+    )
+    assert entry(["trajectory", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "turn start · hi" in out
+    assert "turn end · done" in out
+
+
+def test_trajectory_subcommand_reports_a_missing_file(tmp_path, capsys):
+    from byo.__main__ import main as entry
+
+    assert entry(["trajectory", str(tmp_path / "nope.jsonl")]) == 1
+    assert "No trajectory recorded yet" in capsys.readouterr().out
+
+
+def test_python_m_byo_runs_the_entrypoint():
+    import subprocess
+    import sys
+
+    from byo import __version__
+
+    run = subprocess.run(
+        [sys.executable, "-m", "byo", "--version"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert run.returncode == 0
+    assert run.stdout.strip() == __version__
+
+
 def test_memory_command_shows_facts_and_pending(home, capsys):
     from byo.app import Agent
 
