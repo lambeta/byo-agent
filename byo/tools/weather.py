@@ -86,7 +86,11 @@ def failure_text(failure: WeatherFailure) -> str:
         listed = "; ".join(failure.candidates)
         return f"Error: place ambiguous: {failure.message} Ask which one: {listed}."
     if failure.category == "service unavailable":
-        return f"Error: service unavailable: {failure.message} Retry in a moment."
+        return (
+            f"Error: service unavailable: {failure.message} "
+            "Do not call query_weather again for this place this turn; tell the person "
+            "the weather service is temporarily unavailable and they can ask again shortly."
+        )
     return f"Error: {failure.category}: {failure.message}"
 
 

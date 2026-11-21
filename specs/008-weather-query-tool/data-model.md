@@ -134,7 +134,7 @@ process-local and disappear on restart.
 | candidates exist but none dominates | place ambiguous | `Error: place ambiguous: did you mean Springfield, Missouri, United States; Springfield, Illinois, United States; …?` |
 | place empty and no default | place not recognised | `Error: place not recognised: no place given and no default is configured; ask which city.` |
 | date unparseable / order / outside window | request out of range | `Error: request out of range: '2026-11-30' is outside today..today+3 (2026-11-19..2026-11-22).` |
-| HTTP 429, 5xx, timeout, DNS | service unavailable | `Error: service unavailable: the weather service did not answer; retry in a moment.` |
+| HTTP 5xx, timeout, DNS (after one retry; 429 is not retried) | service unavailable | `Error: service unavailable: the weather service did not answer (…). Do not call query_weather again for this place this turn; tell the person the weather service is temporarily unavailable and they can ask again shortly.` |
 | 200 with missing/malformed fields | data unavailable | `Error: data unavailable: the weather service returned an incomplete reading for this place.` |
 | argument type mismatch (registry) | (registry) | `Error: query_weather needs different arguments (…)` |
 

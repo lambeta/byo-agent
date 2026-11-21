@@ -60,6 +60,13 @@ root type) and, at the service layer, missing/ill-typed fields become `BadData` 
 leaf utility; the standard library covers it. Typed errors at the transport boundary let the
 service map one failure point to the spec's categories without inspecting exception strings.
 
+**Retry (added 2026-11-21)**: the recorded trajectories for 2026-11-20/21 show intermittent
+`_ssl.c:1063: The handshake operation timed out` failures that succeeded on a later fresh
+connection, and the model repeated the identical call immediately after reading a "retry"
+hint. The client now retries a timeout or 5xx once on a new connection inside a bounded total
+budget (timeout × attempts), does not retry a 429 or `BadData`, and the failure text tells the
+model not to repeat the call for the same place in the same turn.
+
 **Alternatives considered**:
 - `requests` or `httpx`: rejected. A new runtime dependency for a single GET pattern, and the
   budget test treats it as a budget change requiring justification in plan.md.

@@ -115,12 +115,13 @@ def test_an_empty_place_uses_the_default_place_setting(settings, conn):
     assert output.startswith("Weather for Shanghai,")
 
 
-def test_a_timeout_has_a_retry_hint(settings, conn):
+def test_a_timeout_tells_the_model_not_to_retry_in_the_same_turn(settings, conn):
     client = FakeClient(error=ServiceUnavailable("HTTP 429"))
     registry = build_registry(conn, settings, weather_client=client)
     output = registry.execute("query_weather", {"place": "Shanghai"})
     assert output.startswith("Error: service unavailable:")
-    assert "Retry in a moment." in output
+    assert "Do not call query_weather again for this place this turn" in output
+    assert "temporarily unavailable" in output
 
 
 def test_a_unit_mismatch_is_data_unavailable(settings, conn):

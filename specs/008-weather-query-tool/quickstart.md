@@ -132,7 +132,7 @@ call it because the model is not offered the schema.
 | Out-of-range date | Ask for a date more than three days ahead | `Error: request out of range` states today..today+3; no fabricated forecast |
 | Empty place, no default | Trigger `query_weather` with `place ""` (offline test) | Readable refusal asking for a city |
 | Default place | Set `BYO_WEATHER_DEFAULT_PLACE=Shanghai` and ask `这里天气怎么样？` | The tool resolves Shanghai and says so |
-| Upstream down | Run the offline timeout fixture (or disconnect the network for a live run) | `Error: service unavailable` with a retry hint; the turn continues |
+| Upstream down | Run the offline timeout fixture (or disconnect the network for a live run) | `Error: service unavailable` after the built-in retry, telling the model not to call again this turn; the turn continues |
 | Rate limited | 429 fixture | Same `service unavailable` category; no crash |
 | Disabled | `BYO_WEATHER_ENABLED=false` | Tool absent from registry, model schema list and Tools view |
 

@@ -91,7 +91,7 @@ the model.
 | `place not recognised` | no candidates; empty place with no default | the name asked for; an instruction to ask for a clearer place |
 | `place ambiguous` | several candidates and none dominates | up to five "Name, admin1, country" candidates, so the model can ask which |
 | `request out of range` | unparseable date, start > end, outside today..today+3 | the supported window as explicit dates |
-| `service unavailable` | timeout, DNS/URL error, HTTP 429 or 5xx | the fact that no answer arrived and a retry hint |
+| `service unavailable` | timeout, DNS/URL error, HTTP 429 or 5xx, after the retry budget | the fact that no answer arrived, an instruction not to repeat the call for this place in the same turn, and a "ask again shortly" hint |
 | `data unavailable` | HTTP 200 with non-JSON, wrong root type, missing/misaligned fields | the fact that the reading is incomplete for this place |
 
 Never: an exception escaping for an expected failure; a fabricated reading; a partial report
@@ -147,9 +147,16 @@ unavailable`.
 |-----------------|--------------|
 | 200 + valid JSON + complete fields | rendered report |
 | 200 + JSON but missing fields / misaligned arrays / non-JSON | `data unavailable` |
-| 429 (rate limited) | `service unavailable` + retry hint |
+| 429 (rate limited) | `service unavailable`, not retried |
 | 5xx | `service unavailable` |
-| timeout / DNS / TLS / connection error | `service unavailable` |
+| timeout / DNS / TLS / connection error | `service unavailable` (retried once) |
+
+A timeout or a 5xx is retried once on a fresh connection after a short pause; the whole
+exchange is bounded by the configured timeout times the attempt count, so a stalled handshake
+cannot double the advertised wait without limit. A 429 is not retried: the provider asked the
+caller to slow down. `BadData` is not retried, because a malformed payload does not improve.
+The tool reports `service unavailable` only after that budget is spent, and its text tells the
+model not to call again for the same place in the same turn.
 
 ## 5. Cache and duplicate-call semantics
 
